@@ -1,33 +1,91 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+// @ts-nocheck
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Text, TouchableOpacity, View } from "react-native";
 
 export default function Sucesso() {
   const router = useRouter();
+  const { tipo, total } = useLocalSearchParams();
+  const ehRetirada = tipo === "retirada";
 
   return (
-    <View style={styles.container}>
-      <Ionicons name="checkmark-circle" size={100} color="#2E7D32" />
-      <Text style={styles.titulo}>Pedido Enviado!</Text>
-      <Text style={styles.subtitulo}>
-        Seu pedido foi enviado para o WhatsApp da MMPAIXÃO.{'\n'}
-        Em breve entraremos em contato!
-      </Text>
-      
-      <TouchableOpacity 
-        style={styles.btn} 
-        onPress={() => router.replace('/(tabs)')}
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "#000",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 30,
+      }}
+    >
+      <Ionicons
+        name={ehRetirada ? "storefront" : "checkmark-circle"}
+        size={100}
+        color={ehRetirada ? "#D4AF37" : "#00b050"}
+      />
+      <Text
+        style={{
+          color: "#D4AF37",
+          fontSize: 30,
+          fontWeight: "900",
+          marginTop: 20,
+          textAlign: "center",
+        }}
       >
-        <Text style={styles.txtBtn}>Voltar para o Catálogo</Text>
+        {ehRetirada ? "PEDIDO CONFIRMADO!" : "PAGO! ✅"}
+      </Text>
+
+      {total ? (
+        <Text
+          style={{
+            color: "#fff",
+            marginTop: 20,
+            textAlign: "center",
+            fontSize: 16,
+          }}
+        >
+          R$ {total} - {ehRetirada ? "Retirada Grátis" : "Entrega"}
+        </Text>
+      ) : (
+        <Text
+          style={{
+            color: "#fff",
+            marginTop: 20,
+            textAlign: "center",
+            fontSize: 16,
+            lineHeight: 22,
+          }}
+        >
+          Pagamento confirmado!{"\n"}Estamos preparando seu pedido 😋
+        </Text>
+      )}
+
+      <Text
+        style={{
+          color: "#888",
+          marginTop: 10,
+          textAlign: "center",
+          fontSize: 13,
+        }}
+      >
+        Você vai acompanhar tudo no WhatsApp
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => router.replace("/(tabs)/catalogo")}
+        style={{
+          backgroundColor: "#D4AF37",
+          padding: 18,
+          borderRadius: 12,
+          width: "100%",
+          alignItems: "center",
+          marginTop: 40,
+        }}
+      >
+        <Text style={{ color: "#000", fontWeight: "900", fontSize: 16 }}>
+          VOLTAR AO CARDÁPIO
+        </Text>
       </TouchableOpacity>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  titulo: { color: '#D4AF37', fontSize: 28, fontWeight: 'bold', marginTop: 24 },
-  subtitulo: { color: '#999', fontSize: 16, textAlign: 'center', marginTop: 16, lineHeight: 24 },
-  btn: { backgroundColor: '#D4AF37', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12, marginTop: 40 },
-  txtBtn: { color: '#000', fontSize: 16, fontWeight: 'bold' }
-});

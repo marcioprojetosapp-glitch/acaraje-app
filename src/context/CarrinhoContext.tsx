@@ -1,113 +1,123 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  createContext,
-  ReactNode,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import { createContext, ReactNode, useContext, useState } from "react";
 
-export type Produto = {
-  id: string; // firebase é string
+type ItemCarrinho = {
+  id?: string;
+  itemId?: string;
   nome: string;
-  preco: number;
-  imagem: any;
+  preco: any;
+  qtd?: number;
+  quantidade?: number;
+  obs?: string;
+  imagem?: string;
   imagemURL?: string;
-  estoque?: number;
-  descricao?: string;
-  categoria?: string;
-};
-
-export type ItemCarrinho = Produto & {
-  itemId: string; // CHAVE UNICA: id + adicionais + pimenta + copos
-  quantidade: number;
-  preco: number; // preco de 1 unidade ja com adicional
-  adicionais: string[];
-  observacao?: string;
+  adicionais?: string[];
 };
 
 type CarrinhoContextType = {
   carrinho: ItemCarrinho[];
-  adicionar: (item: ItemCarrinho) => void;
-  remover: (itemId: string) => void;
-  aumentar: (itemId: string) => void;
-  diminuir: (itemId: string) => void;
-  limpar: () => void;
+  adicionarAoCarrinho: (item: ItemCarrinho) => void;
+  removerDoCarrinho: (id: string) => void;
+  remover: (id: string) => void;
+  limparCarrinho: () => void;
+  aumentarQtd: (id: string) => void;
+  diminuirQtd: (id: string) => void;
+  aumentar: (id: string) => void;
+  diminuir: (id: string) => void;
   total: number;
-  totalItens: number;
 };
 
-const CarrinhoContext = createContext<CarrinhoContextType | undefined>(
-  undefined,
+const CarrinhoContext = createContext<CarrinhoContextType>(
+  {} as CarrinhoContextType,
 );
-const STORAGE_KEY = "@mmpaixao_carrinho";
+
+const parsePreco = (v: any): number => {
+  if (typeof v === "number") return v;
+  if (!v) return 0;
+  const n = parseFloat(String(v).replace("R$", "").replace(",", ".").trim());
+  return isNaN(n) ? 0 : n;
+};
+
+const getId = (item: any) => item.itemId || item.id;
+const getQtd = (item: any) => item.quantidade || item.qtd || 1;
 
 export const CarrinhoProvider = ({ children }: { children: ReactNode }) => {
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
 
-  useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((data) => {
-      if (data) setCarrinho(JSON.parse(data));
-    });
-  }, []);
-
-  useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(carrinho));
-  }, [carrinho]);
-
-  const adicionar = (novoItem: ItemCarrinho) => {
+  const adicionarAoCarrinho = (item: any) => {
+    const id = getId(item);
+    const novo = {
+      ...item,
+      itemId: id,
+      id: id,
+      preco: parsePreco(item.preco),
+      quantidade: item.quantidade || item.qtd || 1,
+      qtd: item.quantidade || item.qtd || 1,
+    };
     setCarrinho((prev) => {
-      const existe = prev.find((p) => p.itemId === novoItem.itemId);
+      const existe = prev.find((p) => getId(p) === id);
       if (existe) {
         return prev.map((p) =>
-          p.itemId === novoItem.itemId
-            ? { ...p, quantidade: p.quantidade + novoItem.quantidade }
+          getId(p) === id
+            ? {
+                ...p,
+                quantidade: getQtd(p) + novo.quantidade,
+                qtd: getQtd(p) + novo.quantidade,
+              }
             : p,
         );
       }
-      return [...prev, novoItem];
+      return [...prev, novo];
     });
   };
 
-  const remover = (itemId: string) =>
-    setCarrinho((prev) => prev.filter((p) => p.itemId !== itemId));
+  const removerDoCarrinho = (id: string) => {
+    setCarrinho((prev) => prev.filter((item) => getId(item) !== id));
+  };
 
-  const aumentar = (itemId: string) => {
+  const aumentarQtd = (id: string) => {
     setCarrinho((prev) =>
       prev.map((p) =>
-        p.itemId === itemId ? { ...p, quantidade: p.quantidade + 1 } : p,
+        getId(p) === id
+          ? { ...p, quantidade: getQtd(p) + 1, qtd: getQtd(p) + 1 }
+          : p,
       ),
     );
   };
 
-  const diminuir = (itemId: string) => {
+  const diminuirQtd = (id: string) => {
     setCarrinho((prev) =>
-      prev
-        .map((p) =>
-          p.itemId === itemId ? { ...p, quantidade: p.quantidade - 1 } : p,
-        )
-        .filter((p) => p.quantidade > 0),
+      prev.map((p) => {
+        if (getId(p) === id) {
+          const nova = getQtd(p) - 1;
+          return {
+            ...p,
+            quantidade: nova < 1 ? 1 : nova,
+            qtd: nova < 1 ? 1 : nova,
+          };
+        }
+        return p;
+      }),
     );
   };
 
-  const limpar = () => setCarrinho([]);
   const total = carrinho.reduce(
-    (acc, item) => acc + item.preco * item.quantidade,
+    (acc, item) => acc + parsePreco(item.preco) * getQtd(item),
     0,
   );
-  const totalItens = carrinho.reduce((acc, item) => acc + item.quantidade, 0);
 
   return (
     <CarrinhoContext.Provider
       value={{
         carrinho,
-        adicionar,
-        remover,
-        aumentar,
-        diminuir,
-        limpar,
+        adicionarAoCarrinho,
+        removerDoCarrinho,
+        remover: removerDoCarrinho,
+        limparCarrinho: () => setCarrinho([]),
+        aumentarQtd,
+        diminuirQtd,
+        aumentar: aumentarQtd,
+        diminuir: diminuirQtd,
         total,
-        totalItens,
       }}
     >
       {children}
@@ -115,9 +125,4 @@ export const CarrinhoProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useCarrinho = () => {
-  const context = useContext(CarrinhoContext);
-  if (!context)
-    throw new Error("useCarrinho deve ser usado dentro do CarrinhoProvider");
-  return context;
-};
+export const useCarrinho = () => useContext(CarrinhoContext);

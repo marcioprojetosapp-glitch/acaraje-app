@@ -27,7 +27,8 @@ type Produto = {
 export default function DetalheProduto() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { adicionar, carrinho } = useCarrinho();
+  const { adicionarAoCarrinho, carrinho } = useCarrinho(); // 1. CORRIGIDO
+
   const [produto, setProduto] = useState<Produto | null>(null);
   const [quantidade, setQuantidade] = useState(1);
 
@@ -37,7 +38,7 @@ export default function DetalheProduto() {
   const [pimenta, setPimenta] = useState<"sem" | "com" | null>(null);
   const [qtdCopos, setQtdCopos] = useState(0);
 
-  const totalItens = carrinho.reduce((acc, item) => acc + item.quantidade, 0);
+  const totalItens = carrinho.reduce((acc, item) => acc + item.qtd, 0); // 2. CORRIGIDO: qtd
 
   useEffect(() => {
     carregarProduto();
@@ -87,13 +88,13 @@ export default function DetalheProduto() {
     const adicionaisKey = adicionaisListaOrdenada.join("-");
     const itemId = `${produto.id}-${adicionaisKey}-${pimenta || "normal"}-${qtdCopos}`;
 
-    adicionar({
-      ...produto,
-      itemId,
+    adicionarAoCarrinho({
+      // 3. CORRIGIDO
+      id: itemId, // tem que ser id
+      nome: produto.nome,
       preco: precoUnitario,
-      quantidade,
-      adicionais: adicionaisListaOrdenada,
-      observacao: "",
+      qtd: quantidade, // tem que ser qtd
+      obs: adicionaisListaOrdenada.join(", "), // tem que ser obs
       imagem: produto.imagemURL,
     });
 
@@ -293,7 +294,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   badgeTxt: { color: "#000", fontSize: 10, fontWeight: "bold" },
-
   containerImagem: { width: "100%", height: 230 },
   imagem: { width: "100%", height: "100%" },
   info: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },

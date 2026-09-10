@@ -1,6 +1,9 @@
 import { useCarrinho } from "@/src/context/CarrinhoContext";
+import { db } from "@/src/lib/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { doc, onSnapshot } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import {
   FlatList,
   Image,
@@ -11,9 +14,55 @@ import {
   View,
 } from "react-native";
 
+type TipoEntrega = "entrega" | "retirada";
+
 export default function Carrinho() {
   const { carrinho, remover, aumentar, diminuir, total } = useCarrinho();
   const router = useRouter();
+
+  const [tipo, setTipo] = useState<TipoEntrega>("entrega");
+  const [taxaEntrega, setTaxaEntrega] = useState(8);
+  const [tempoMedio, setTempoMedio] = useState("40-60 min");
+  const [aberto, setAberto] = useState(true);
+
+  // LÊ AO VIVO DO FIREBASE QUE VOCÊ CRIOU
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setTaxaEntrega(d.taxaEntrega ?? 8);
+        setTempoMedio(d.tempoMedio ?? "40-60 min");
+        setAberto(d.aberto ?? true);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const getQtd = (item: any) => item.quantidade || item.qtd || 1;
+  const getId = (item: any) => item.itemId || item.id;
+
+  const frete = tipo === "retirada" ? 0 : taxaEntrega;
+  const totalFinal = total + frete;
+
+  const handleFinalizar = () => {
+    if (!aberto) {
+      alert("Loja fechada no momento!");
+      return;
+    }
+    const textoDoCarrinho = carrinho
+      .map((item: any) => {
+        let texto = `${getQtd(item)}x ${item.nome.toUpperCase()}`;
+        if (item.adicionais?.length > 0)
+          texto += `\n   + ${item.adicionais.join(", ")}`;
+        return texto;
+      })
+      .join("\n\n");
+
+    // AGORA MANDA AS 2 OPÇÕES PARA O CHECKOUT
+    router.push(
+      `/checkout?resumo=${encodeURIComponent(textoDoCarrinho)}&subtotal=${total}&taxa=${frete}&total=${totalFinal}&tipo=${tipo}`,
+    );
+  };
 
   if (carrinho.length === 0) {
     return (
@@ -33,7 +82,6 @@ export default function Carrinho() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.push("/(tabs)/catalogo")}>
           <Ionicons name="arrow-back" size={28} color="#D4AF37" />
@@ -43,50 +91,101 @@ export default function Carrinho() {
 
       <FlatList
         data={carrinho}
-        keyExtractor={(item, index) => `${item.itemId}-${index}`}
-        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
-        renderItem={({ item }) => (
+        keyExtractor={(item: any, index) => `${getId(item)}-${index}`}
+        contentContainerStyle={{ padding: 16, paddingBottom: 260 }}
+        ListFooterComponent={
+          <View style={{ marginTop: 20 }}>
+            <Text style={styles.secaoTitulo}>COMO QUER RECEBER?</Text>
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setTipo("entrega")}
+                style={[
+                  styles.cardTipo,
+                  tipo === "entrega" && styles.cardTipoAtivo,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tipoTitulo,
+                    tipo === "entrega" && styles.tipoAtivo,
+                  ]}
+                >
+                  🛵 ENTREGA
+                </Text>
+                <Text style={styles.tipoSub}>
+                  R$ {taxaEntrega.toFixed(2).replace(".", ",")}
+                </Text>
+                <Text style={styles.tipoTempo}>{tempoMedio}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setTipo("retirada")}
+                style={[
+                  styles.cardTipo,
+                  tipo === "retirada" && styles.cardTipoAtivoVerde,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tipoTitulo,
+                    tipo === "retirada" && styles.tipoAtivoVerdeTxt,
+                  ]}
+                >
+                  🏃 RETIRADA
+                </Text>
+                <Text style={styles.tipoSub}>GRÁTIS</Text>
+                <Text style={styles.tipoTempo}>{tempoMedio}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {!aberto && (
+              <View style={styles.alertaFechado}>
+                <Text style={styles.alertaTxt}>⛔ LOJA FECHADA NO MOMENTO</Text>
+              </View>
+            )}
+          </View>
+        }
+        renderItem={({ item }: any) => (
           <View style={styles.card}>
             <Image
               source={{ uri: item.imagemURL || item.imagem }}
               style={styles.imagem}
             />
-
             <TouchableOpacity
               style={styles.btnLixo}
-              onPress={() => remover(item.itemId)}
+              onPress={() => remover(getId(item))}
             >
               <Ionicons name="trash" size={22} color="red" />
             </TouchableOpacity>
-
             <View style={styles.info}>
               <Text style={styles.nome}>
-                {item.quantidade}x {item.nome.toUpperCase()}
+                {getQtd(item)}x {item.nome.toUpperCase()}
               </Text>
-
-              {item.adicionais && item.adicionais.length > 0 && (
+              {item.adicionais?.length > 0 && (
                 <Text style={styles.adicionais}>
                   + {item.adicionais.join(", ")}
                 </Text>
               )}
-
               <Text style={styles.preco}>
-                R$ {(item.preco * item.quantidade).toFixed(2).replace(".", ",")}
+                R${" "}
+                {(Number(item.preco) * getQtd(item))
+                  .toFixed(2)
+                  .replace(".", ",")}
               </Text>
-
               <View style={styles.qtdContainer}>
                 <Text style={styles.qtdLabel}>Quantidade</Text>
                 <View style={styles.qtdBotoes}>
                   <TouchableOpacity
                     style={styles.btnQtd}
-                    onPress={() => diminuir(item.itemId)}
+                    onPress={() => diminuir(getId(item))}
                   >
                     <Text style={styles.btnQtdTxt}>-</Text>
                   </TouchableOpacity>
-                  <Text style={styles.qtd}>{item.quantidade}</Text>
+                  <Text style={styles.qtd}>{getQtd(item)}</Text>
                   <TouchableOpacity
                     style={styles.btnQtd}
-                    onPress={() => aumentar(item.itemId)}
+                    onPress={() => aumentar(getId(item))}
                   >
                     <Text style={styles.btnQtdTxt}>+</Text>
                   </TouchableOpacity>
@@ -97,16 +196,40 @@ export default function Carrinho() {
         )}
       />
 
-      {/* FOOTER COM BOTÃO FUNCIONANDO */}
       <View style={styles.footer}>
-        <Text style={styles.total}>
-          Total: R$ {total.toFixed(2).replace(".", ",")}
-        </Text>
+        <View style={{ gap: 4, marginBottom: 10 }}>
+          <View style={styles.linhaTotal}>
+            <Text style={styles.totalLabel}>Subtotal</Text>
+            <Text style={styles.totalLabel}>
+              R$ {total.toFixed(2).replace(".", ",")}
+            </Text>
+          </View>
+          <View style={styles.linhaTotal}>
+            <Text style={styles.totalLabel}>Frete ({tipo})</Text>
+            <Text style={styles.totalLabel}>
+              {frete === 0
+                ? "GRÁTIS"
+                : `R$ ${frete.toFixed(2).replace(".", ",")}`}
+            </Text>
+          </View>
+          <View style={[styles.linhaTotal, { marginTop: 6 }]}>
+            <Text style={styles.total}>Total:</Text>
+            <Text style={styles.total}>
+              R$ {totalFinal.toFixed(2).replace(".", ",")}
+            </Text>
+          </View>
+        </View>
+
         <TouchableOpacity
-          style={styles.btnFinalizar}
-          onPress={() => router.push("/checkout")} // <-- AQUI QUE FOI ARRUMADO
+          style={[styles.btnFinalizar, !aberto && { backgroundColor: "#555" }]}
+          onPress={handleFinalizar}
+          disabled={!aberto}
         >
-          <Text style={styles.btnFinalizarTxt}>Finalizar Pedido</Text>
+          <Text style={styles.btnFinalizarTxt}>
+            {tipo === "retirada"
+              ? "CONFIRMAR RETIRADA"
+              : "FINALIZAR COM ENTREGA"}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -134,6 +257,35 @@ const styles = StyleSheet.create({
   },
   vazio: { flex: 1, justifyContent: "center", alignItems: "center" },
   vazioTxt: { color: "#888", fontSize: 16 },
+  secaoTitulo: {
+    color: "#D4AF37",
+    fontWeight: "900",
+    marginBottom: 10,
+    letterSpacing: 1,
+  },
+  cardTipo: {
+    flex: 1,
+    backgroundColor: "#1a1a1a",
+    borderRadius: 12,
+    padding: 15,
+    borderWidth: 2,
+    borderColor: "#222",
+  },
+  cardTipoAtivo: { borderColor: "#D4AF37", backgroundColor: "#2a2210" },
+  cardTipoAtivoVerde: { borderColor: "#00C851", backgroundColor: "#102a15" },
+  tipoTitulo: { color: "#fff", fontWeight: "900", fontSize: 14 },
+  tipoAtivo: { color: "#D4AF37" },
+  tipoAtivoVerdeTxt: { color: "#00C851" },
+  tipoSub: { color: "#fff", fontSize: 13, marginTop: 4, fontWeight: "bold" },
+  tipoTempo: { color: "#888", fontSize: 11, marginTop: 2 },
+  alertaFechado: {
+    backgroundColor: "#ff4444",
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 12,
+    alignItems: "center",
+  },
+  alertaTxt: { color: "#fff", fontWeight: "900" },
   card: {
     backgroundColor: "#1a1a1a",
     borderRadius: 12,
@@ -186,19 +338,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
     padding: 16,
     paddingBottom: 30,
+    borderTopWidth: 1,
+    borderTopColor: "#222",
   },
-  total: {
-    color: "#fff",
-    fontSize: 19,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 14,
-  },
+  linhaTotal: { flexDirection: "row", justifyContent: "space-between" },
+  totalLabel: { color: "#aaa", fontSize: 14 },
+  total: { color: "#fff", fontSize: 19, fontWeight: "bold" },
   btnFinalizar: {
     backgroundColor: "#D4AF37",
     padding: 17,
     borderRadius: 12,
     alignItems: "center",
+    marginTop: 4,
   },
   btnFinalizarTxt: { color: "#000", fontSize: 17, fontWeight: "bold" },
 });
