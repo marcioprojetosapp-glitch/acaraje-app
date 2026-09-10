@@ -30,7 +30,7 @@ import { db } from "../src/lib/firebase";
 
 const CLOUD_NAME = "qbl22xip";
 const UPLOAD_PRESET = "mmpaixao_preset";
-const SENHA_CORRETA = "22";
+const SENHA_CORRETA = "7788"; // <-- TROCA AQUI SUA SENHA NOVA
 
 export default function Admin() {
   const [modalSenhaVisivel, setModalSenhaVisivel] = useState(true);
@@ -65,7 +65,6 @@ export default function Admin() {
     }
   };
 
-  // === FUNCAO 2 VIAS 80MM ===
   function imprimirPedidoTermica(pedido: any) {
     if (Platform.OS !== "web") {
       Alert.alert("Só imprime no PC");
@@ -89,12 +88,12 @@ export default function Admin() {
       <style>
         @page { size: 80mm auto; margin: 0; }
         body { width: 72mm; font-family: 'Courier New', monospace; font-size: 13px; padding: 4mm; margin:0; color:#000; }
-       .titulo { text-align:center; font-weight:900; font-size:18px; }
-       .sub { text-align:center; font-size:11px; }
-       .linha { border-top:1px dashed #000; margin:8px 0; }
-       .linha2 { border-top:2px solid #000; margin:8px 0; }
-       .corte { page-break-after: always; }
-       .big { font-size:16px; font-weight:900; }
+      .titulo { text-align:center; font-weight:900; font-size:18px; }
+      .sub { text-align:center; font-size:11px; }
+      .linha { border-top:1px dashed #000; margin:8px 0; }
+      .linha2 { border-top:2px solid #000; margin:8px 0; }
+      .corte { page-break-after: always; }
+      .big { font-size:16px; font-weight:900; }
       </style>
       </head>
       <body onload="setTimeout(()=>{window.print(); window.close();}, 400);">
@@ -133,8 +132,6 @@ export default function Admin() {
       async (s) => {
         const lista = s.docs.map((d) => ({ id: d.id, ...d.data() }));
         setPedidos(lista);
-
-        // IMPRESSAO AUTOMATICA SÓ NO PC
         if (Platform.OS === "web") {
           for (const pedido of lista as any[]) {
             const isPago =
@@ -171,6 +168,7 @@ export default function Admin() {
       setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
   }, [autorizado]);
+
   useEffect(() => {
     if (!autorizado) return;
     return onSnapshot(doc(db, "config", "loja"), (s) => {
@@ -338,14 +336,14 @@ export default function Admin() {
                 fontSize: 20,
                 marginTop: 15,
               }}
-              placeholder="808"
-              secureTextEntry={true}
+              placeholder="Digite a senha"
               placeholderTextColor="#666"
               value={senhaDigitada}
               onChangeText={setSenhaDigitada}
-              secureTextEntry
+              secureTextEntry={true}
               keyboardType="number-pad"
               autoFocus
+              autoComplete="off"
             />
             <TouchableOpacity
               onPress={verificarSenha}
