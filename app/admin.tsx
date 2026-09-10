@@ -338,7 +338,8 @@ export default function Admin() {
                 fontSize: 20,
                 marginTop: 15,
               }}
-              placeholder="Senha 22"
+              placeholder="808"
+              secureTextEntry={true}
               placeholderTextColor="#666"
               value={senhaDigitada}
               onChangeText={setSenhaDigitada}
