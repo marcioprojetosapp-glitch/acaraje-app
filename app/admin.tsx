@@ -38,7 +38,7 @@ export default function Admin() {
   const [autorizado, setAutorizado] = useState(false);
   const [pedidos, setPedidos] = useState([]);
   const [produtos, setProdutos] = useState([]);
-  const [clientes, setClientes] = useState([]); // NOVO
+  const [clientes, setClientes] = useState([]);
   const [aba, setAba] = useState("pedidos");
   const [filtro, setFiltro] = useState("todos");
   const [config, setConfig] = useState({
@@ -131,17 +131,16 @@ export default function Admin() {
     });
   }, [autorizado]);
 
+  // --- ALTERADO: SÓ IMPRIME DEPOIS DO PAGAMENTO ---
   useEffect(() => {
     if (!autorizado || pedidos.length === 0) return;
     pedidos.forEach((p: any) => {
-      if (!jaImpressos.current.has(p.id) && p.status !== "entregue") {
-        const tempoCriacao = p.criadoEm?.toDate?.()?.getTime() || 0;
-        const ehNovo = Date.now() - tempoCriacao < 3 * 60 * 1000;
-        if (ehNovo || !p.impresso) {
-          imprimirPedidoTermica(p);
-          jaImpressos.current.add(p.id);
-          updateDoc(doc(db, "pedidos", p.id), { impresso: true }).catch(() => {});
-        }
+      const isPagoAuto = p.pago === true || p.status === "pago" || p.statusPagamento === "approved" || p.statusPagamento === "pago" || String(p.formaPagamento || "").toUpperCase().includes("APP");
+      
+      if (!jaImpressos.current.has(p.id) && isPagoAuto && p.status !== "entregue" && p.impresso !== true) {
+        imprimirPedidoTermica(p);
+        jaImpressos.current.add(p.id);
+        updateDoc(doc(db, "pedidos", p.id), { impresso: true }).catch(() => {});
       }
     });
   }, [pedidos, autorizado]);
@@ -158,7 +157,6 @@ export default function Admin() {
     });
   }, [autorizado]);
 
-  // NOVO: LISTA DE CLIENTES
   useEffect(() => {
     if (!autorizado) return;
     return onSnapshot(query(collection(db, "clientes"), orderBy("ultimoPedido", "desc")), (s) => {
@@ -166,7 +164,6 @@ export default function Admin() {
     });
   }, [autorizado]);
 
-  // NOVO: EXPORTAR CSV GRÁTIS
   const exportarClientes = () => {
     if (clientes.length === 0) {
       Alert.alert("Nenhum cliente ainda", "A lista começa a encher após o próximo deploy");
@@ -343,7 +340,7 @@ export default function Admin() {
                         <Text style={{ color: isEntrega ? "#D4AF37" : "#00C851", fontWeight: "900", fontSize: 12 }}>{isEntrega ? "🛵 ENTREGA" : "🟢 RETIRADA"} • {hora} {p.impresso ? "🖨️" : ""}</Text>
                         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
                           <View style={{ backgroundColor: isEntregue ? "#333" : isPagoAuto ? "#00C851" : "#442200", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
-                            <Text style={{ color: isEntregue ? "#aaa" : isPagoAuto ? "#fff" : "#ffaa00", fontWeight: "900", fontSize: 9 }}>{isEntregue ? "ENTREGUE" : isPagoAuto ? "✓ PAGO NO APP" : "A PAGAR"}</Text>
+                            <Text style={{ color: isEntregue ? "#aaa" : isPagoAuto ? "#fff" : "#ffaa00", fontWeight: "900", fontSize: 9 }}>{isEntregue ? "ENTREGUE" : isPagoAuto ? "✓ PAGO" : "A PAGAR"}</Text>
                           </View>
                           <TouchableOpacity onPress={() => apagarPedido(p.id)} style={{ backgroundColor: "#330000", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}><Text style={{ color: "red", fontSize: 10, fontWeight: "900" }}>X</Text></TouchableOpacity>
                         </View>
@@ -355,9 +352,9 @@ export default function Admin() {
                         <Text style={{ color: "#aaa", fontSize: 12 }}>📱 {p.telefone || p.whatsapp} • 💳 {p.formaPagamento || "APP"}</Text>
                       </View>
                       <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-                        {!isPagoAuto && <TouchableOpacity onPress={() => marcarPago(p)} style={{ flex: 1, backgroundColor: "#222", borderWidth: 1, borderColor: "#00C851", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ color: "#00C851", fontWeight: "900", fontSize: 12 }}>MARCAR PAGO</Text></TouchableOpacity>}
+                        {!isPagoAuto && <TouchableOpacity onPress={() => marcarPago(p)} style={{ flex: 1, backgroundColor: "#222", borderWidth: 1, borderColor: "#00C851", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ color: "#00C851", fontWeight: "900", fontSize: 12 }}>MARCAR PAGO + IMPRIMIR</Text></TouchableOpacity>}
                         {!isEntregue && <TouchableOpacity onPress={() => marcarEntregue(p)} style={{ flex: 1, backgroundColor: isPagoAuto ? "#D4AF37" : "#333", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 12, color: isPagoAuto ? "#000" : "#fff" }}>📦 ENTREGUE</Text></TouchableOpacity>}
-                        <TouchableOpacity onPress={() => imprimirPedidoTermica(p)} style={{ backgroundColor: "#fff", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 12 }}>🖨️ 2 VIAS</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={() => imprimirPedidoTermica(p)} style={{ backgroundColor: "#fff", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 12 }}>🖨️</Text></TouchableOpacity>
                         <TouchableOpacity onPress={() => { const tel = String(p.telefone || p.whatsapp || "").replace(/\D/g, ""); if (tel) Linking.openURL(`https://wa.me/55${tel}`); }} style={{ backgroundColor: "#222", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ color: "#fff" }}>💬</Text></TouchableOpacity>
                       </View>
                     </View>
