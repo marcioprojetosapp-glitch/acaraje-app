@@ -65,8 +65,6 @@ export default function Admin() {
     }
   };
 
-  // ... mantém suas funções montarResumoDetalhado e imprimirPedidoTermica iguais ...
-
   function montarResumoDetalhado(pedido: any) {
     if (pedido.itens && pedido.itens.length > 0) {
       const resumoMontado = pedido.itens
@@ -108,6 +106,7 @@ export default function Admin() {
     return "Sem detalhes";
   }
 
+  // --- FUNÇÃO CORRIGIDA: OS 4 PROBLEMAS ---
   function imprimirPedidoTermica(pedido: any) {
     if (Platform.OS !== "web") {
       Alert.alert("Só imprime no PC");
@@ -116,24 +115,65 @@ export default function Admin() {
     const nomeCliente = pedido.nome || pedido.cliente || "Sem nome";
     const data = new Date().toLocaleString("pt-BR");
     const idCurto = pedido.id.slice(-6).toUpperCase();
-    const resumo = montarResumoDetalhado(pedido);
+
+    // 3 - AGORA COM PREÇO
+    const resumo =
+      pedido.itens && pedido.itens.length > 0
+        ? pedido.itens
+            .map((i: any) => {
+              const qtd = i.qtd || i.quantidade || 1;
+              const nomeP = (i.nome || i.title || "ITEM").toUpperCase();
+              const precoUnit = Number(i.preco || i.precoUnit || i.valor || 0);
+              let linha = `${qtd}x ${nomeP} - R$ ${precoUnit.toFixed(2).replace(".", ",")}`;
+              const extrasSet = new Set<string>();
+              if (Array.isArray(i.adicionais) && i.adicionais.length) {
+                i.adicionais.forEach((c: any) => {
+                  const t =
+                    typeof c === "string"
+                      ? c
+                      : c.nome || c.nomeComplemento || c.title || c.label || "";
+                  if (t && String(t).trim())
+                    extrasSet.add(String(t).trim().toUpperCase());
+                });
+              }
+              if (i.obs && typeof i.obs === "string" && i.obs.trim() !== "") {
+                i.obs
+                  .split(",")
+                  .map((s: string) => s.trim())
+                  .filter(Boolean)
+                  .forEach((p: string) => {
+                    extrasSet.add(p.toUpperCase());
+                  });
+              }
+              if (i.observacao)
+                extrasSet.add(`OBS: ${i.observacao.toUpperCase()}`);
+              const extras = Array.from(extrasSet).map((e) => ` + ${e}`);
+              if (extras.length > 0) return linha + "\n" + extras.join("\n");
+              return linha;
+            })
+            .join("\n\n")
+        : montarResumoDetalhado(pedido);
+
     const isRetirada =
       pedido.tipoEntrega === "retirada" ||
       String(pedido.endereco || "")
         .toUpperCase()
         .includes("RETIRADA");
+
+    // 2 - CORRIGE FRETE ZERADO (usa?? pra respeitar 0)
     let frete = 0;
     if (!isRetirada) {
-      frete = Number(
-        pedido.taxaEntrega ||
-          pedido.frete ||
-          pedido.valorFrete ||
-          pedido.valorEntrega ||
-          pedido.taxa ||
-          config.taxaEntrega ||
-          8,
-      );
+      const freteBruto =
+        pedido.taxaEntrega ??
+        pedido.frete ??
+        pedido.valorFrete ??
+        pedido.valorEntrega ??
+        pedido.taxa ??
+        config.taxaEntrega ??
+        8;
+      frete = Number(freteBruto) || 0;
     }
+
     const totalNum =
       Number(
         String(pedido.total || pedido.totalFormatado || "0")
@@ -142,7 +182,9 @@ export default function Admin() {
           .trim(),
       ) || 0;
     const subtotal = totalNum > frete ? totalNum - frete : totalNum;
-    const totalExibir = pedido.totalFormatado || pedido.total || "0";
+    const totalExibir =
+      pedido.totalFormatado || `R$ ${totalNum.toFixed(2).replace(".", ",")}`;
+
     let iframe = document.getElementById(
       "iframe-impressao",
     ) as HTMLIFrameElement;
@@ -155,7 +197,44 @@ export default function Admin() {
       iframe.style.border = "0";
       document.body.appendChild(iframe);
     }
-    const html = `<html><head><title>${idCurto}</title><style>@page { size: 80mm auto; margin: 0; } body { width: 72mm; font-family: 'Courier New', monospace; font-size: 13px; padding: 4mm; margin:0; color:#000; } .titulo { text-align:center; font-weight:900; font-size:18px; } .sub { text-align:center; font-size:11px; } .linha { border-top:1px dashed #000; margin:8px 0; } .linha2 { border-top:2px solid #000; margin:8px 0; } .big { font-size:16px; font-weight:900; } .tot { display:flex; justify-content:space-between; font-size:13px; }</style></head><body><div class="titulo">COZINHA - FRITAR</div><div class="sub">${data} | #${idCurto}</div><div class="linha2"></div><div class="big">${nomeCliente.toUpperCase()}</div><div class="linha"></div><div style="white-space:pre-wrap; font-size:15px; font-weight:bold; line-height:20px;">${resumo}</div><div class="linha2"></div><div style="text-align:center; font-weight:900; font-size:14px;">*** COZINHA ***</div><br/><br/><br/><div class="corte"></div><div class="titulo">ACARAJE DA BENCAO</div><div class="sub">VIA ENTREGA | #${idCurto}<br/>${data}</div><div class="linha2"></div><div><b>CLIENTE:</b> ${nomeCliente}</div><div><b>ZAP:</b> ${pedido.whatsapp || pedido.telefone || ""}</div><div><b>END:</b> ${pedido.endereco || "RETIRADA NO BALCAO"}</div><div><b>PAG:</b> ${(pedido.formaPagamento || "").toUpperCase()} - PAGO</div><div class="linha"></div><div style="white-space:pre-wrap; font-size:13px; line-height:18px;">${resumo}</div><div class="linha"></div><div class="tot"><span>SUBTOTAL</span><span>R$ ${subtotal.toFixed(2).replace(".", ",")}</span></div><div class="tot"><span>${isRetirada ? "FRETE (RETIRADA)" : "FRETE"}</span><span>${isRetirada ? "GRATIS" : "R$ " + frete.toFixed(2).replace(".", ",")}</span></div><div style="display:flex; justify-content:space-between; font-size:18px; font-weight:900; margin-top:6px; border-top:1px dashed #000; padding-top:6px;"><span>TOTAL</span><span>R$ ${totalExibir}</span></div><div class="linha2"></div><div style="text-align:center; font-weight:900;">*** MOTOBOY ***</div><script>window.onload = function(){ window.print(); }</script></body></html>`;
+    const html = `<html><head><title>${idCurto}</title><style>
+      @page { size: 80mm auto; margin: 0; }
+      body { width: 72mm; font-family: 'Courier New', monospace; font-size: 13px; padding: 4mm; margin:0; color:#000; }
+     .titulo { text-align:center; font-weight:900; font-size:18px; }
+     .sub { text-align:center; font-size:11px; }
+     .linha { border-top:1px dashed #000; margin:8px 0; }
+     .linha2 { border-top:2px solid #000; margin:8px 0; }
+     .big { font-size:16px; font-weight:900; }
+     .tot { display:flex; justify-content:space-between; font-size:13px; }
+      </style></head><body>
+      <div class="titulo">COZINHA - FRITAR</div>
+      <div class="sub">${data} | #${idCurto}</div>
+      <div class="linha2"></div>
+      <div class="big">${nomeCliente.toUpperCase()}</div>
+      <div class="linha"></div>
+      <div style="white-space:pre-wrap; font-size:14px; font-weight:bold; line-height:20px;">${resumo}</div>
+      <div class="linha2"></div>
+      <div style="text-align:center; font-weight:900; font-size:14px;">*** COZINHA ***</div>
+      <br/><br/>
+      <div style="text-align:center;">- - - - - - - - - - - - - - - - - - - -</div>
+      <br/><br/>
+      <div class="titulo">ACARAJE DA BENCAO</div>
+      <div class="sub">VIA ENTREGA | #${idCurto}<br/>${data}</div>
+      <div class="linha2"></div>
+      <div><b>CLIENTE:</b> ${nomeCliente}</div>
+      <div><b>ZAP:</b> ${pedido.whatsapp || pedido.telefone || ""}</div>
+      <div><b>END:</b> ${pedido.endereco || "RETIRADA NO BALCAO"}</div>
+      <div><b>PAG:</b> ${(pedido.formaPagamento || "").toUpperCase()} - PAGO</div>
+      <div class="linha"></div>
+      <div style="white-space:pre-wrap; font-size:12px; line-height:18px;">${resumo}</div>
+      <div class="linha"></div>
+      <div class="tot"><span>SUBTOTAL</span><span>R$ ${subtotal.toFixed(2).replace(".", ",")}</span></div>
+      <div class="tot"><span>${isRetirada ? "FRETE (RETIRADA)" : "FRETE"}</span><span>${isRetirada || frete === 0 ? "GRATIS" : "R$ " + frete.toFixed(2).replace(".", ",")}</span></div>
+      <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:900; margin-top:6px; border-top:1px dashed #000; padding-top:6px;"><span>TOTAL</span><span>${String(totalExibir).includes("R$") ? totalExibir : "R$ " + totalExibir}</span></div>
+      <div class="linha2"></div>
+      <div style="text-align:center; font-weight:900;">*** MOTOBOY ***</div>
+      <br/><br/><br/><br/><br/><br/><br/><br/>
+      <script>window.onload = function(){ window.print(); }</script></body></html>`;
     const docIframe = iframe.contentDocument || iframe.contentWindow?.document;
     if (docIframe) {
       docIframe.open();
@@ -318,7 +397,6 @@ export default function Admin() {
     }
   };
 
-  // --- CORREÇÕES PRINCIPAIS ---
   const corrigirTodoEstoque = async () => {
     if (
       Platform.OS === "web" &&
@@ -413,7 +491,7 @@ export default function Admin() {
       descricao: (editando as any).descricao || "",
       estoque: qtd,
       imagemURL: (editando as any).imagemURL,
-      disponivel: qtd > 0, // <--- CORRIGIDO: agora se tem estoque, fica disponivel
+      disponivel: qtd > 0,
     });
     setEditModal(false);
     setEditando(null);
@@ -1025,7 +1103,6 @@ export default function Admin() {
               </View>
             </View>
           )}
-          {/* resto das abas pedidos, clientes, config mantém igual */}
           {aba === "pedidos" && (
             <View>
               <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
