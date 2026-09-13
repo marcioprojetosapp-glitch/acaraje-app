@@ -18,812 +18,849 @@ import {
   Image,
   Linking,
   Modal,
-  Platform,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { db } from "../src/lib/firebase";
+import { db } from "../constants/firebase";
 
-const CLOUD_NAME = "qbl22xip";
-const UPLOAD_PRESET = "mmpaixao_preset";
-const SENHA = "7788";
-
+// --- SEU ADMIN ORIGINAL RESGATADO + EDITAR CONSERTADO ---
 export default function Admin() {
   const [senha, setSenha] = useState("");
-  const [ok, setOk] = useState(false);
-  const [pedidos, setPedidos] = useState([]);
-  const [produtos, setProdutos] = useState([]);
-  const [clientes, setClientes] = useState([]);
-  const [aba, setAba] = useState("pedidos");
-  const [config, setConfig] = useState({ taxaEntrega: 8, aberto: true });
+  const [logado, setLogado] = useState(false);
+  const [aba, setAba] = useState("pedidos"); // pedidos | produtos | clientes | config
+  const [pedidos, setPedidos] = useState<any[]>([]);
+  const [produtos, setProdutos] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<any[]>([]);
+  const [filtroStatus, setFiltroStatus] = useState("todos"); // todos | pago | a_pagar | preparando | entregue | cancelado
 
-  // CADASTRO
-  const [nome, setNome] = useState("");
-  const [preco, setPreco] = useState("");
-  const [desc, setDesc] = useState("");
-  const [estoque, setEstoque] = useState("");
-  const [img, setImg] = useState(null);
-  const [up, setUp] = useState(false);
+  const [config, setConfig] = useState({
+    tempoEntrega: "40",
+    taxaEntrega: "5",
+    aberto: true,
+    msgFechado: "Estamos fechados no momento",
+  });
 
-  // EDITAR - BLINDADO
-  const [showEdit, setShowEdit] = useState(false);
-  const [editItem, setEditItem] = useState(null);
+  // PRODUTO - NOVO E EDITAR
+  const [novoProduto, setNovoProduto] = useState({
+    nome: "",
+    preco: "",
+    estoque: "",
+    descricao: "",
+    imagem: "",
+  });
+  const [editandoProduto, setEditandoProduto] = useState<any>(null);
+  const [modalEditarAberto, setModalEditarAberto] = useState(false);
+  const [produtoEditForm, setProdutoEditForm] = useState({
+    nome: "",
+    preco: "",
+    estoque: "",
+    descricao: "",
+    imagem: "",
+  });
 
-  const entrar = () => {
-    if (senha === SENHA) setOk(true);
-    else Alert.alert("Senha errada");
+  const senhaCorreta = "7788";
+
+  useEffect(() => {
+    if (!logado) return;
+    const q = query(collection(db, "pedidos"), orderBy("criadoEm", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setPedidos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, [logado]);
+
+  useEffect(() => {
+    if (!logado) return;
+    const q = query(collection(db, "produtos"), orderBy("nome"));
+    const unsub = onSnapshot(q, (snap) => {
+      setProdutos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, [logado]);
+
+  useEffect(() => {
+    if (!logado) return;
+    const q = query(collection(db, "clientes"), orderBy("nome"));
+    const unsub = onSnapshot(q, (snap) => {
+      setClientes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, [logado]);
+
+  useEffect(() => {
+    if (!logado) return;
+    const ref = doc(db, "config", "loja");
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) setConfig(snap.data() as any);
+    });
+    return unsub;
+  }, [logado]);
+
+  // FUNÇÕES PRODUTOS - EDITAR AMARELO CONSERTADO
+  const handleEditarProduto = (produto: any) => {
+    setEditandoProduto(produto);
+    setProdutoEditForm({
+      nome: produto.nome || "",
+      preco: String(produto.preco || ""),
+      estoque: String(produto.estoque || produto.qtd || ""),
+      descricao: produto.descricao || "",
+      imagem: produto.imagem || produto.foto || "",
+    });
+    setModalEditarAberto(true);
   };
 
-  function resumo(pedido) {
-    if (pedido.itens && pedido.itens.length) {
-      return pedido.itens
-        .map((i) => {
-          const q = i.qtd || i.quantidade || 1;
-          const n = (i.nome || "ITEM").toUpperCase();
-          return q + "x " + n;
-        })
-        .join("\n");
+  const salvarEdicaoProduto = async () => {
+    if (!editandoProduto) return;
+    try {
+      await updateDoc(doc(db, "produtos", editandoProduto.id), {
+        nome: produtoEditForm.nome,
+        preco: parseFloat(produtoEditForm.preco.replace(",", ".")),
+        estoque: parseInt(produtoEditForm.estoque),
+        descricao: produtoEditForm.descricao,
+        imagem: produtoEditForm.imagem,
+        foto: produtoEditForm.imagem,
+      });
+      setModalEditarAberto(false);
+      setEditandoProduto(null);
+      Alert.alert("Sucesso", "Produto atualizado!");
+    } catch (e: any) {
+      Alert.alert("Erro", e.message);
     }
-    return pedido.resumoDetalhado || pedido.resumo || "Sem detalhes";
-  }
+  };
 
-  useEffect(() => {
-    if (!ok) return;
-    return onSnapshot(
-      query(collection(db, "pedidos"), orderBy("criadoEm", "desc")),
-      (s) => setPedidos(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    );
-  }, [ok]);
-  useEffect(() => {
-    if (!ok) return;
-    return onSnapshot(collection(db, "produtos"), (s) =>
-      setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    );
-  }, [ok]);
-  useEffect(() => {
-    if (!ok) return;
-    return onSnapshot(collection(db, "clientes"), (s) =>
-      setClientes(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    );
-  }, [ok]);
-  useEffect(() => {
-    if (!ok) return;
-    return onSnapshot(doc(db, "config", "loja"), (s) => {
-      if (s.exists()) setConfig((p) => ({ ...p, ...s.data() }));
-    });
-  }, [ok]);
-
-  const pickImage = async (isEdit = false) => {
-    const r = await ImagePicker.launchImageLibraryAsync({
+  const pickImageNovo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
       quality: 0.7,
     });
-    if (!r.canceled) {
-      setUp(true);
-      const fd = new FormData();
-      fd.append("file", {
-        uri: r.assets[0].uri,
-        type: "image/jpeg",
-        name: "p.jpg",
-      } as any);
-      fd.append("upload_preset", UPLOAD_PRESET);
-      try {
-        const res = await fetch(
-          "https://api.cloudinary.com/v1_1/" + CLOUD_NAME + "/image/upload",
-          { method: "POST", body: fd },
-        );
-        const data = await res.json();
-        if (data.secure_url) {
-          if (isEdit)
-            setEditItem((prev) => ({ ...prev, imagemURL: data.secure_url }));
-          else setImg(data.secure_url);
-        }
-      } finally {
-        setUp(false);
-      }
+    if (!result.canceled) {
+      setNovoProduto({ ...novoProduto, imagem: result.assets[0].uri });
     }
   };
 
-  const salvarProduto = async () => {
-    if (!nome || !preco) return Alert.alert("Falta nome/preco");
-    const q = Number(estoque) || 0;
+  const pickImageEdit = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setProdutoEditForm({ ...produtoEditForm, imagem: result.assets[0].uri });
+    }
+  };
+
+  const criarProduto = async () => {
+    if (!novoProduto.nome || !novoProduto.preco) {
+      Alert.alert("Preencha nome e preço");
+      return;
+    }
     await addDoc(collection(db, "produtos"), {
-      nome,
-      preco: parseFloat(preco.replace(",", ".")),
-      descricao: desc,
-      estoque: q,
-      imagemURL: img,
-      disponivel: q > 0,
+      nome: novoProduto.nome,
+      preco: parseFloat(novoProduto.preco.replace(",", ".")),
+      estoque: parseInt(novoProduto.estoque || "0"),
+      descricao: novoProduto.descricao,
+      imagem: novoProduto.imagem,
+      foto: novoProduto.imagem,
       criadoEm: serverTimestamp(),
     });
-    setNome("");
-    setPreco("");
-    setDesc("");
-    setEstoque("");
-    setImg(null);
-    Alert.alert("Produto cadastrado!");
-  };
-
-  const abrirEditar = (produto) => {
-    setEditItem({ ...produto });
-    setShowEdit(true);
-  };
-  const salvarEdicao = async () => {
-    if (!editItem) return;
-    const q = Number(editItem.estoque) || 0;
-    await updateDoc(doc(db, "produtos", editItem.id), {
-      nome: editItem.nome,
-      preco: Number(String(editItem.preco).replace(",", ".")),
-      descricao: editItem.descricao,
-      estoque: q,
-      imagemURL: editItem.imagemURL,
-      disponivel: q > 0 ? editItem.disponivel : false,
+    setNovoProduto({
+      nome: "",
+      preco: "",
+      estoque: "",
+      descricao: "",
+      imagem: "",
     });
-    setShowEdit(false);
-    setEditItem(null);
-    Alert.alert("Salvo com sucesso!");
   };
 
-  if (!ok) {
+  const atualizarStatusPedido = async (id: string, novoStatus: string) => {
+    await updateDoc(doc(db, "pedidos", id), {
+      status: novoStatus,
+      statusPagamento: novoStatus,
+    });
+  };
+
+  const imprimirPedido = (pedido: any) => {
+    // Só imprime se for PAGO
+    if (pedido.status !== "pago" && pedido.statusPagamento !== "pago") {
+      Alert.alert(
+        "Atenção",
+        "Só imprima depois de pagamento! Status atual: " + pedido.status,
+      );
+      return;
+    }
+    const texto = `PEDIDO ${pedido.id.slice(0, 5)}\n${pedido.clienteNome}\n${pedido.itens?.map((i: any) => `${i.qtd}x ${i.nome}`).join("\n")}\nTotal: R$${pedido.total}`;
+    Linking.openURL(
+      `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`,
+    );
+  };
+
+  const pedidosFiltrados = pedidos.filter((p) => {
+    if (filtroStatus === "todos") return true;
+    return p.status === filtroStatus || p.statusPagamento === filtroStatus;
+  });
+
+  if (!logado) {
     return (
       <View
         style={{
           flex: 1,
-          backgroundColor: "#000",
           justifyContent: "center",
           alignItems: "center",
           padding: 20,
+          backgroundColor: "#fff",
         }}
       >
-        <View
+        <Text style={{ fontSize: 24, fontWeight: "bold", marginBottom: 20 }}>
+          ADMIN - ACARAJÉ
+        </Text>
+        <TextInput
+          placeholder="Senha"
+          secureTextEntry
+          value={senha}
+          onChangeText={setSenha}
           style={{
-            width: "90%",
-            backgroundColor: "#1a1a1a",
-            padding: 22,
-            borderRadius: 14,
             borderWidth: 1,
-            borderColor: "#D4AF37",
+            width: "100%",
+            padding: 15,
+            borderRadius: 10,
+            marginBottom: 10,
+          }}
+        />
+        <TouchableOpacity
+          onPress={() =>
+            senha === senhaCorreta
+              ? setLogado(true)
+              : Alert.alert("Senha errada")
+          }
+          style={{
+            backgroundColor: "#000",
+            padding: 15,
+            width: "100%",
+            borderRadius: 10,
+            alignItems: "center",
           }}
         >
-          <Text
-            style={{
-              color: "#D4AF37",
-              fontWeight: "900",
-              fontSize: 18,
-              textAlign: "center",
-            }}
-          >
-            ADMIN ACARAJÉ DA BENÇÃO
-          </Text>
-          <TextInput
-            style={{
-              borderWidth: 1,
-              borderColor: "#333",
-              backgroundColor: "#000",
-              color: "#fff",
-              padding: 14,
-              borderRadius: 10,
-              textAlign: "center",
-              fontSize: 20,
-              marginTop: 15,
-            }}
-            placeholder="Senha"
-            placeholderTextColor="#666"
-            value={senha}
-            onChangeText={setSenha}
-            secureTextEntry
-          />
-          <TouchableOpacity
-            onPress={entrar}
-            style={{
-              backgroundColor: "#D4AF37",
-              padding: 14,
-              borderRadius: 10,
-              marginTop: 15,
-              alignItems: "center",
-            }}
-          >
-            <Text style={{ fontWeight: "900" }}>ENTRAR</Text>
-          </TouchableOpacity>
-        </View>
+          <Text style={{ color: "#fff", fontWeight: "bold" }}>ENTRAR</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#000" }}>
-      <Modal
-        visible={showEdit}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowEdit(false)}
+    <View style={{ flex: 1, backgroundColor: "#f5f5f5" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          backgroundColor: "#000",
+          padding: 10,
+          gap: 5,
+        }}
       >
+        {["pedidos", "produtos", "clientes", "config"].map((t) => (
+          <TouchableOpacity
+            key={t}
+            onPress={() => setAba(t)}
+            style={{
+              padding: 10,
+              backgroundColor: aba === t ? "#ffcc00" : "#333",
+              borderRadius: 8,
+            }}
+          >
+            <Text
+              style={{
+                color: aba === t ? "#000" : "#fff",
+                fontWeight: "bold",
+                textTransform: "uppercase",
+              }}
+            >
+              {t}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <ScrollView style={{ flex: 1, padding: 15 }}>
+        {aba === "pedidos" && (
+          <>
+            <Text
+              style={{ fontSize: 20, fontWeight: "bold", marginBottom: 10 }}
+            >
+              PEDIDOS ({pedidosFiltrados.length})
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 15 }}
+            >
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {[
+                  "todos",
+                  "a_pagar",
+                  "pago",
+                  "preparando",
+                  "entregue",
+                  "cancelado",
+                ].map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    onPress={() => setFiltroStatus(s)}
+                    style={{
+                      paddingHorizontal: 15,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      backgroundColor: filtroStatus === s ? "#000" : "#ddd",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: filtroStatus === s ? "#fff" : "#000",
+                        fontWeight: "bold",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {s === "a_pagar" ? "A PAGAR" : s}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {pedidosFiltrados.map((ped) => (
+              <View
+                key={ped.id}
+                style={{
+                  backgroundColor: "#fff",
+                  padding: 15,
+                  borderRadius: 12,
+                  marginBottom: 10,
+                  borderLeftWidth: 5,
+                  borderLeftColor:
+                    ped.status === "pago"
+                      ? "green"
+                      : ped.status === "a_pagar"
+                        ? "red"
+                        : "#ffcc00",
+                }}
+              >
+                <Text style={{ fontWeight: "bold" }}>
+                  {ped.clienteNome} - R$ {ped.total}
+                </Text>
+                <Text>
+                  Status: {ped.status || ped.statusPagamento} -{" "}
+                  {ped.formaPagamento}
+                </Text>
+                <Text style={{ fontSize: 12, marginTop: 5 }}>
+                  {ped.itens
+                    ?.map((i: any) => `${i.qtd}x ${i.nome} ${i.obs || ""}`)
+                    .join(" | ")}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 5,
+                    marginTop: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => atualizarStatusPedido(ped.id, "pago")}
+                    style={{
+                      backgroundColor: "green",
+                      padding: 8,
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      PAGO
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => atualizarStatusPedido(ped.id, "a_pagar")}
+                    style={{
+                      backgroundColor: "red",
+                      padding: 8,
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      A PAGAR
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => atualizarStatusPedido(ped.id, "preparando")}
+                    style={{
+                      backgroundColor: "#ff9900",
+                      padding: 8,
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      PREPARANDO
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => atualizarStatusPedido(ped.id, "entregue")}
+                    style={{
+                      backgroundColor: "#000",
+                      padding: 8,
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ENTREGUE
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => imprimirPedido(ped)}
+                    style={{
+                      backgroundColor: "#0066ff",
+                      padding: 8,
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      IMPRIMIR
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        {aba === "produtos" && (
+          <>
+            <Text
+              style={{ fontSize: 20, fontWeight: "bold", marginBottom: 10 }}
+            >
+              PRODUTOS ({produtos.length})
+            </Text>
+            {produtos.map((prod) => (
+              <View
+                key={prod.id}
+                style={{
+                  backgroundColor: "#fff",
+                  padding: 15,
+                  borderRadius: 12,
+                  marginBottom: 10,
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: "bold" }}>{prod.nome}</Text>
+                  <Text>
+                    R$ {prod.preco} - Estoque: {prod.estoque || prod.qtd || 0}
+                  </Text>
+                  <Text style={{ fontSize: 11 }}>{prod.descricao}</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 5 }}>
+                  <TouchableOpacity
+                    onPress={() => handleEditarProduto(prod)}
+                    style={{
+                      backgroundColor: "#ffcc00",
+                      paddingHorizontal: 15,
+                      paddingVertical: 10,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text style={{ fontWeight: "bold", color: "#000" }}>
+                      EDITAR
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => deleteDoc(doc(db, "produtos", prod.id))}
+                    style={{
+                      backgroundColor: "red",
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "bold" }}>X</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+
+            <View
+              style={{
+                backgroundColor: "#fff",
+                padding: 15,
+                borderRadius: 12,
+                marginTop: 20,
+              }}
+            >
+              <Text style={{ fontWeight: "bold", marginBottom: 10 }}>
+                NOVO PRODUTO
+              </Text>
+              <TextInput
+                placeholder="Nome"
+                value={novoProduto.nome}
+                onChangeText={(v) =>
+                  setNovoProduto({ ...novoProduto, nome: v })
+                }
+                style={{
+                  borderWidth: 1,
+                  padding: 10,
+                  borderRadius: 8,
+                  marginBottom: 8,
+                }}
+              />
+              <TextInput
+                placeholder="Preço"
+                keyboardType="numeric"
+                value={novoProduto.preco}
+                onChangeText={(v) =>
+                  setNovoProduto({ ...novoProduto, preco: v })
+                }
+                style={{
+                  borderWidth: 1,
+                  padding: 10,
+                  borderRadius: 8,
+                  marginBottom: 8,
+                }}
+              />
+              <TextInput
+                placeholder="Estoque"
+                keyboardType="numeric"
+                value={novoProduto.estoque}
+                onChangeText={(v) =>
+                  setNovoProduto({ ...novoProduto, estoque: v })
+                }
+                style={{
+                  borderWidth: 1,
+                  padding: 10,
+                  borderRadius: 8,
+                  marginBottom: 8,
+                }}
+              />
+              <TextInput
+                placeholder="Descrição"
+                value={novoProduto.descricao}
+                onChangeText={(v) =>
+                  setNovoProduto({ ...novoProduto, descricao: v })
+                }
+                style={{
+                  borderWidth: 1,
+                  padding: 10,
+                  borderRadius: 8,
+                  marginBottom: 8,
+                }}
+              />
+              <TouchableOpacity
+                onPress={pickImageNovo}
+                style={{
+                  backgroundColor: "#eee",
+                  padding: 10,
+                  borderRadius: 8,
+                  marginBottom: 8,
+                  alignItems: "center",
+                }}
+              >
+                <Text>
+                  {novoProduto.imagem
+                    ? "Foto selecionada ✓"
+                    : "Selecionar foto"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={criarProduto}
+                style={{
+                  backgroundColor: "#000",
+                  padding: 15,
+                  borderRadius: 8,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                  CRIAR PRODUTO
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {aba === "clientes" && (
+          <>
+            <Text
+              style={{ fontSize: 20, fontWeight: "bold", marginBottom: 10 }}
+            >
+              CLIENTES ({clientes.length}) - GRÁTIS
+            </Text>
+            {clientes.map((c) => (
+              <View
+                key={c.id}
+                style={{
+                  backgroundColor: "#fff",
+                  padding: 15,
+                  borderRadius: 12,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ fontWeight: "bold" }}>
+                  {c.nome} - {c.telefone}
+                </Text>
+                <Text style={{ fontSize: 12 }}>{c.endereco}</Text>
+                <Text style={{ fontSize: 10, color: "green", marginTop: 5 }}>
+                  ✓ LGPD Aceito
+                </Text>
+              </View>
+            ))}
+          </>
+        )}
+
+        {aba === "config" && (
+          <View
+            style={{ backgroundColor: "#fff", padding: 20, borderRadius: 12 }}
+          >
+            <Text
+              style={{ fontSize: 20, fontWeight: "bold", marginBottom: 15 }}
+            >
+              CONFIGURAÇÕES
+            </Text>
+            <Text style={{ fontWeight: "bold", marginBottom: 5 }}>
+              Tempo de Entrega (minutos)
+            </Text>
+            <TextInput
+              value={config.tempoEntrega}
+              onChangeText={(v) => setConfig({ ...config, tempoEntrega: v })}
+              keyboardType="numeric"
+              style={{
+                borderWidth: 1,
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 15,
+              }}
+              placeholder="Ex: 40"
+            />
+
+            <Text style={{ fontWeight: "bold", marginBottom: 5 }}>
+              Taxa de Entrega (R$)
+            </Text>
+            <TextInput
+              value={config.taxaEntrega}
+              onChangeText={(v) => setConfig({ ...config, taxaEntrega: v })}
+              keyboardType="numeric"
+              style={{
+                borderWidth: 1,
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 15,
+              }}
+            />
+
+            <Text style={{ fontWeight: "bold", marginBottom: 5 }}>
+              Mensagem Loja Fechada
+            </Text>
+            <TextInput
+              value={config.msgFechado}
+              onChangeText={(v) => setConfig({ ...config, msgFechado: v })}
+              style={{
+                borderWidth: 1,
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 15,
+              }}
+            />
+
+            <TouchableOpacity
+              onPress={() => setConfig({ ...config, aberto: !config.aberto })}
+              style={{
+                backgroundColor: config.aberto ? "green" : "red",
+                padding: 15,
+                borderRadius: 8,
+                alignItems: "center",
+                marginBottom: 15,
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                {config.aberto ? "LOJA ABERTA ✓" : "LOJA FECHADA"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={async () => {
+                await setDoc(doc(db, "config", "loja"), config);
+                Alert.alert("Salvo!", "Configurações salvas");
+              }}
+              style={{
+                backgroundColor: "#000",
+                padding: 15,
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                SALVAR CONFIG
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* MODAL EDITAR PRODUTO - AMARELO CONSERTADO */}
+      <Modal visible={modalEditarAberto} transparent animationType="slide">
         <View
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.95)",
+            backgroundColor: "rgba(0,0,0,0.6)",
             justifyContent: "center",
             padding: 20,
           }}
         >
           <View
-            style={{
-              backgroundColor: "#1a1a1a",
-              padding: 18,
-              borderRadius: 12,
-              borderWidth: 2,
-              borderColor: "#D4AF37",
-            }}
+            style={{ backgroundColor: "#fff", borderRadius: 15, padding: 20 }}
           >
             <Text
-              style={{
-                color: "#D4AF37",
-                fontWeight: "900",
-                textAlign: "center",
-                marginBottom: 12,
-                fontSize: 16,
-              }}
+              style={{ fontSize: 18, fontWeight: "bold", marginBottom: 15 }}
             >
               EDITAR PRODUTO
             </Text>
-            {editItem && (
-              <View>
-                <Text style={{ color: "#888", fontSize: 10 }}>NOME</Text>
-                <TextInput
-                  value={editItem.nome}
-                  onChangeText={(t) => setEditItem({ ...editItem, nome: t })}
-                  style={{
-                    backgroundColor: "#000",
-                    color: "#fff",
-                    padding: 12,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    marginBottom: 10,
-                  }}
-                />
-                <Text style={{ color: "#888", fontSize: 10 }}>PREÇO</Text>
-                <TextInput
-                  value={String(editItem.preco)}
-                  onChangeText={(t) => setEditItem({ ...editItem, preco: t })}
-                  keyboardType="numeric"
-                  style={{
-                    backgroundColor: "#000",
-                    color: "#fff",
-                    padding: 12,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    marginBottom: 10,
-                  }}
-                />
-                <Text style={{ color: "#888", fontSize: 10 }}>ESTOQUE</Text>
-                <TextInput
-                  value={String(editItem.estoque ?? "")}
-                  onChangeText={(t) => setEditItem({ ...editItem, estoque: t })}
-                  keyboardType="numeric"
-                  style={{
-                    backgroundColor: "#000",
-                    color: "#fff",
-                    padding: 12,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    marginBottom: 12,
-                  }}
-                />
-                <Text style={{ color: "#888", fontSize: 10 }}>DESCRIÇÃO</Text>
-                <TextInput
-                  value={editItem.descricao}
-                  onChangeText={(t) =>
-                    setEditItem({ ...editItem, descricao: t })
-                  }
-                  style={{
-                    backgroundColor: "#000",
-                    color: "#fff",
-                    padding: 12,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    marginBottom: 12,
-                  }}
-                />
-                <TouchableOpacity
-                  onPress={() => pickImage(true)}
-                  style={{
-                    backgroundColor: "#222",
-                    height: 90,
-                    borderRadius: 8,
-                    justifyContent: "center",
-                    alignItems: "center",
-                    marginBottom: 12,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                  }}
-                >
-                  {editItem.imagemURL ? (
-                    <Image
-                      source={{ uri: editItem.imagemURL }}
-                      style={{ width: "100%", height: "100%", borderRadius: 8 }}
-                    />
-                  ) : (
-                    <Text style={{ color: "#888" }}>
-                      {up ? "ENVIANDO..." : "TROCAR FOTO"}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={salvarEdicao}
-                  style={{
-                    backgroundColor: "#D4AF37",
-                    padding: 14,
-                    borderRadius: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text style={{ fontWeight: "900" }}>SALVAR AGORA</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setShowEdit(false)}
-                  style={{
-                    backgroundColor: "#333",
-                    padding: 12,
-                    borderRadius: 10,
-                    alignItems: "center",
-                    marginTop: 8,
-                  }}
-                >
-                  <Text style={{ color: "#fff" }}>CANCELAR</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      <ScrollView
-        style={{
-          flex: 1,
-          backgroundColor: "#000",
-          padding: 12,
-          paddingTop: 45,
-        }}
-      >
-        <Text
-          style={{
-            color: "#D4AF37",
-            fontSize: 18,
-            fontWeight: "900",
-            textAlign: "center",
-          }}
-        >
-          ADMIN - ACARAJÉ DA BENÇÃO
-        </Text>
-        <View
-          style={{
-            flexDirection: "row",
-            gap: 6,
-            marginTop: 15,
-            marginBottom: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setAba("pedidos")}
-            style={{
-              flex: 1,
-              minWidth: 80,
-              padding: 11,
-              borderRadius: 10,
-              backgroundColor: aba === "pedidos" ? "#D4AF37" : "#222",
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{
-                fontWeight: "900",
-                fontSize: 10,
-                color: aba === "pedidos" ? "#000" : "#fff",
-              }}
-            >
-              PEDIDOS ({pedidos.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setAba("produtos")}
-            style={{
-              flex: 1,
-              minWidth: 80,
-              padding: 11,
-              borderRadius: 10,
-              backgroundColor: aba === "produtos" ? "#D4AF37" : "#222",
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{
-                fontWeight: "900",
-                fontSize: 10,
-                color: aba === "produtos" ? "#000" : "#fff",
-              }}
-            >
-              PRODUTOS
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setAba("clientes")}
-            style={{
-              flex: 1,
-              minWidth: 80,
-              padding: 11,
-              borderRadius: 10,
-              backgroundColor: aba === "clientes" ? "#D4AF37" : "#222",
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{
-                fontWeight: "900",
-                fontSize: 10,
-                color: aba === "clientes" ? "#000" : "#fff",
-              }}
-            >
-              CLIENTES
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setAba("config")}
-            style={{
-              flex: 1,
-              minWidth: 80,
-              padding: 11,
-              borderRadius: 10,
-              backgroundColor: aba === "config" ? "#D4AF37" : "#222",
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{
-                fontWeight: "900",
-                fontSize: 10,
-                color: aba === "config" ? "#000" : "#fff",
-              }}
-            >
-              CONFIG
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {aba === "pedidos" && (
-          <View style={{ gap: 12 }}>
-            {pedidos.map((p) => (
-              <View
-                key={p.id}
-                style={{
-                  backgroundColor: "#1a1a1a",
-                  padding: 14,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: "#333",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>
-                  {p.nome} - R$ {p.total}
-                </Text>
-                <Text style={{ color: "#888", fontSize: 10 }}>
-                  {p.telefone} - {p.endereco}
-                </Text>
-                <Text
-                  style={{
-                    color: "#ddd",
-                    marginTop: 6,
-                    backgroundColor: "#000",
-                    padding: 8,
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                >
-                  {resumo(p)}
-                </Text>
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const tel = String(
-                        p.telefone || p.whatsapp || "",
-                      ).replace(/\D/g, "");
-                      if (tel) Linking.openURL("https://wa.me/55" + tel);
-                    }}
-                    style={{
-                      backgroundColor: "#25D366",
-                      padding: 10,
-                      borderRadius: 8,
-                    }}
-                  >
-                    <Text
-                      style={{ color: "#fff", fontWeight: "900", fontSize: 10 }}
-                    >
-                      WHATSAPP
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {aba === "produtos" && (
-          <View>
-            <View
-              style={{
-                backgroundColor: "#1a1a1a",
-                padding: 14,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: "#333",
-              }}
-            >
-              <Text
-                style={{
-                  color: "#D4AF37",
-                  fontWeight: "900",
-                  marginBottom: 10,
-                }}
-              >
-                CADASTRAR NOVO PRODUTO
-              </Text>
-              <TouchableOpacity
-                onPress={() => pickImage(false)}
-                style={{
-                  backgroundColor: "#222",
-                  height: 100,
-                  borderRadius: 10,
-                  justifyContent: "center",
-                  alignItems: "center",
-                  marginBottom: 10,
-                  borderWidth: 1,
-                  borderColor: "#333",
-                }}
-              >
-                {img ? (
-                  <Image
-                    source={{ uri: img }}
-                    style={{ width: "100%", height: "100%", borderRadius: 10 }}
-                  />
-                ) : (
-                  <Text style={{ color: "#888" }}>
-                    {up ? "ENVIANDO..." : "FOTO DO PRODUTO"}
-                  </Text>
-                )}
-              </TouchableOpacity>
-              <TextInput
-                placeholder="Nome"
-                placeholderTextColor="#666"
-                value={nome}
-                onChangeText={setNome}
-                style={{
-                  backgroundColor: "#000",
-                  color: "#fff",
-                  padding: 12,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: "#333",
-                  marginBottom: 8,
-                }}
-              />
-              <TextInput
-                placeholder="Preco 15.00"
-                placeholderTextColor="#666"
-                value={preco}
-                onChangeText={setPreco}
-                keyboardType="numeric"
-                style={{
-                  backgroundColor: "#000",
-                  color: "#fff",
-                  padding: 12,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: "#333",
-                  marginBottom: 8,
-                }}
-              />
-              <TextInput
-                placeholder="Descricao"
-                placeholderTextColor="#666"
-                value={desc}
-                onChangeText={setDesc}
-                style={{
-                  backgroundColor: "#000",
-                  color: "#fff",
-                  padding: 12,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: "#333",
-                  marginBottom: 8,
-                }}
-              />
-              <TextInput
-                placeholder="Estoque (ex: 20)"
-                placeholderTextColor="#666"
-                value={estoque}
-                onChangeText={setEstoque}
-                keyboardType="numeric"
-                style={{
-                  backgroundColor: "#000",
-                  color: "#fff",
-                  padding: 12,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: "#333",
-                  marginBottom: 10,
-                }}
-              />
-              <TouchableOpacity
-                onPress={salvarProduto}
-                style={{
-                  backgroundColor: "#D4AF37",
-                  padding: 14,
-                  borderRadius: 10,
-                  alignItems: "center",
-                }}
-              >
-                <Text style={{ fontWeight: "900" }}>SALVAR PRODUTO</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ gap: 10, marginTop: 15 }}>
-              {produtos.map((pr) => (
-                <View
-                  key={pr.id}
-                  style={{
-                    backgroundColor: "#1a1a1a",
-                    padding: 12,
-                    borderRadius: 10,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                  }}
-                >
-                  <Image
-                    source={{ uri: pr.imagemURL }}
-                    style={{
-                      width: 50,
-                      height: 50,
-                      borderRadius: 8,
-                      backgroundColor: "#222",
-                    }}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}
-                    >
-                      {pr.nome}
-                    </Text>
-                    <Text style={{ color: "#D4AF37" }}>
-                      R$ {pr.preco} - EST: {pr.estoque}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => abrirEditar(pr)}
-                    style={{
-                      backgroundColor: "#D4AF37",
-                      padding: 12,
-                      borderRadius: 8,
-                    }}
-                  >
-                    <Text
-                      style={{ color: "#000", fontSize: 11, fontWeight: "900" }}
-                    >
-                      EDITAR
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={async () => {
-                      if (Platform.OS === "web" ? confirm("Apagar?") : true)
-                        await deleteDoc(doc(db, "produtos", pr.id));
-                    }}
-                    style={{
-                      backgroundColor: "#330000",
-                      padding: 10,
-                      borderRadius: 8,
-                    }}
-                  >
-                    <Text style={{ color: "red", fontSize: 10 }}>X</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {aba === "clientes" && (
-          <View style={{ gap: 10 }}>
-            {clientes.map((c) => (
-              <View
-                key={c.id}
-                style={{
-                  backgroundColor: "#1a1a1a",
-                  padding: 12,
-                  borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: "#333",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>
-                  {c.nome}
-                </Text>
-                <Text style={{ color: "#888" }}>{c.telefone}</Text>
-                <Text style={{ color: "#888", fontSize: 10 }}>
-                  {c.endereco}
-                </Text>
-              </View>
-            ))}
-            {clientes.length === 0 && (
-              <Text
-                style={{ color: "#666", textAlign: "center", marginTop: 20 }}
-              >
-                Nenhum cliente ainda
-              </Text>
-            )}
-          </View>
-        )}
-
-        {aba === "config" && (
-          <View
-            style={{
-              backgroundColor: "#1a1a1a",
-              padding: 16,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: "#333",
-            }}
-          >
-            <Text
-              style={{ color: "#D4AF37", fontWeight: "900", marginBottom: 12 }}
-            >
-              CONFIGURAÇÕES
-            </Text>
-            <Text style={{ color: "#888", fontSize: 10 }}>TAXA DE ENTREGA</Text>
             <TextInput
-              value={String(config.taxaEntrega)}
-              onChangeText={(t) =>
-                setConfig({ ...config, taxaEntrega: Number(t) || 0 })
+              placeholder="Nome"
+              value={produtoEditForm.nome}
+              onChangeText={(v) =>
+                setProdutoEditForm({ ...produtoEditForm, nome: v })
               }
-              keyboardType="numeric"
               style={{
-                backgroundColor: "#000",
-                color: "#fff",
+                borderWidth: 1,
                 padding: 12,
                 borderRadius: 8,
+                marginBottom: 10,
+              }}
+            />
+            <TextInput
+              placeholder="Preço"
+              keyboardType="numeric"
+              value={produtoEditForm.preco}
+              onChangeText={(v) =>
+                setProdutoEditForm({ ...produtoEditForm, preco: v })
+              }
+              style={{
                 borderWidth: 1,
-                borderColor: "#333",
-                marginBottom: 12,
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 10,
+              }}
+            />
+            <TextInput
+              placeholder="Estoque"
+              keyboardType="numeric"
+              value={produtoEditForm.estoque}
+              onChangeText={(v) =>
+                setProdutoEditForm({ ...produtoEditForm, estoque: v })
+              }
+              style={{
+                borderWidth: 1,
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 10,
+              }}
+            />
+            <TextInput
+              placeholder="Descrição"
+              value={produtoEditForm.descricao}
+              onChangeText={(v) =>
+                setProdutoEditForm({ ...produtoEditForm, descricao: v })
+              }
+              style={{
+                borderWidth: 1,
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 10,
               }}
             />
             <TouchableOpacity
-              onPress={async () => {
-                await setDoc(doc(db, "config", "loja"), config, {
-                  merge: true,
-                });
-                Alert.alert("Salvo");
-              }}
+              onPress={pickImageEdit}
               style={{
-                backgroundColor: "#D4AF37",
-                padding: 14,
-                borderRadius: 10,
+                backgroundColor: "#eee",
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 10,
                 alignItems: "center",
               }}
             >
-              <Text style={{ fontWeight: "900" }}>SALVAR CONFIG</Text>
+              <Text>
+                {produtoEditForm.imagem
+                  ? "Foto nova selecionada ✓ - Trocar foto"
+                  : "Trocar foto"}
+              </Text>
             </TouchableOpacity>
+            {produtoEditForm.imagem ? (
+              <Image
+                source={{ uri: produtoEditForm.imagem }}
+                style={{
+                  width: "100%",
+                  height: 100,
+                  borderRadius: 8,
+                  marginBottom: 10,
+                }}
+              />
+            ) : null}
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setModalEditarAberto(false)}
+                style={{
+                  flex: 1,
+                  backgroundColor: "#ddd",
+                  padding: 15,
+                  borderRadius: 8,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontWeight: "bold" }}>CANCELAR</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={salvarEdicaoProduto}
+                style={{
+                  flex: 1,
+                  backgroundColor: "#ffcc00",
+                  padding: 15,
+                  borderRadius: 8,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontWeight: "bold" }}>SALVAR</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
-      </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
