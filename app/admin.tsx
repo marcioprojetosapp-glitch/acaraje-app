@@ -131,12 +131,10 @@ export default function Admin() {
     });
   }, [autorizado]);
 
-  // --- ALTERADO: SÓ IMPRIME DEPOIS DO PAGAMENTO ---
   useEffect(() => {
     if (!autorizado || pedidos.length === 0) return;
     pedidos.forEach((p: any) => {
       const isPagoAuto = p.pago === true || p.status === "pago" || p.statusPagamento === "approved" || p.statusPagamento === "pago" || String(p.formaPagamento || "").toUpperCase().includes("APP");
-      
       if (!jaImpressos.current.has(p.id) && isPagoAuto && p.status !== "entregue" && p.impresso !== true) {
         imprimirPedidoTermica(p);
         jaImpressos.current.add(p.id);
@@ -174,7 +172,6 @@ export default function Admin() {
       const data = c.ultimoPedido?.toDate ? c.ultimoPedido.toDate().toLocaleDateString("pt-BR") : "";
       csv += `"${(c.nome||"").replace(/"/g,'') }","${c.whatsapp||""}","${c.aceitaPromo ? "SIM" : "NAO"}","${data}"\n`;
     });
-
     if (Platform.OS === "web") {
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
@@ -258,9 +255,11 @@ export default function Admin() {
     setNome(""); setPreco(""); setDescricao(""); setEstoque(""); setImageUrl(null);
   };
   const salvarEdicao = async () => {
+    if (!editando) return;
     const qtd = Number((editando as any).estoque) || 0;
-    await updateDoc(doc(db, "produtos", (editando as any).id), { nome: (editando as any).nome, preco: Number((editando as any).preco), descricao: (editando as any).descricao, estoque: qtd, imagemURL: (editando as any).imagemURL, disponivel: qtd > 0 ? (editando as any).disponivel : false });
+    await updateDoc(doc(db, "produtos", (editando as any).id), { nome: (editando as any).nome, preco: Number(String((editando as any).preco).replace(",", ".")), descricao: (editando as any).descricao, estoque: qtd, imagemURL: (editando as any).imagemURL, disponivel: qtd > 0 ? (editando as any).disponivel : false });
     setEditModal(false);
+    setEditando(null);
   };
   const salvarConfig = async () => {
     await setDoc(doc(db, "config", "loja"), { taxaEntrega: Number(config.taxaEntrega), tempoMedio: config.tempoMedio, aberto: config.aberto }, { merge: true });
@@ -280,45 +279,60 @@ export default function Admin() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={editModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <ScrollView style={{ width: "95%" }} contentContainerStyle={{ backgroundColor: "#1a1a1a", padding: 18, borderRadius: 14, borderWidth: 1, borderColor: "#D4AF37" }}>
+            <Text style={{ color: "#D4AF37", fontWeight: "900", fontSize: 16, textAlign: "center", marginBottom: 12 }}>EDITAR PRODUTO</Text>
+            <TouchableOpacity onPress={pickImage} style={{ backgroundColor: "#222", height: 120, borderRadius: 10, justifyContent: "center", alignItems: "center", marginBottom: 10, borderWidth: 1, borderColor: "#333" }}>
+              {editando?.imagemURL ? <Image source={{ uri: editando.imagemURL as any }} style={{ width: "100%", height: "100%", borderRadius: 10 }} /> : <Text style={{ color: "#888" }}>{uploading ? "ENVIANDO..." : "📷 FOTO"}</Text>}
+            </TouchableOpacity>
+            <Text style={{ color: "#888", fontSize: 10, marginBottom: 2 }}>Nome</Text>
+            <TextInput value={editando?.nome || ""} onChangeText={(t) => setEditando({ ...editando, nome: t } as any)} style={{ backgroundColor: "#000", color: "#fff", padding: 12, borderRadius: 8, borderWidth: 1, borderColor: "#333", marginBottom: 8 }} />
+            <Text style={{ color: "#888", fontSize: 10, marginBottom: 2 }}>Preço</Text>
+            <TextInput value={String(editando?.preco || "")} onChangeText={(t) => setEditando({ ...editando, preco: t } as any)} keyboardType="numeric" style={{ backgroundColor: "#000", color: "#fff", padding: 12, borderRadius: 8, borderWidth: 1, borderColor: "#333", marginBottom: 8 }} />
+            <Text style={{ color: "#888", fontSize: 10, marginBottom: 2 }}>Descrição</Text>
+            <TextInput value={editando?.descricao || ""} onChangeText={(t) => setEditando({ ...editando, descricao: t } as any)} style={{ backgroundColor: "#000", color: "#fff", padding: 12, borderRadius: 8, borderWidth: 1, borderColor: "#333", marginBottom: 8 }} />
+            <Text style={{ color: "#888", fontSize: 10, marginBottom: 2 }}>Estoque</Text>
+            <TextInput value={String(editando?.estoque || "")} onChangeText={(t) => setEditando({ ...editando, estoque: t } as any)} keyboardType="numeric" style={{ backgroundColor: "#000", color: "#fff", padding: 12, borderRadius: 8, borderWidth: 1, borderColor: "#333", marginBottom: 10 }} />
+            <TouchableOpacity onPress={salvarEdicao} style={{ backgroundColor: "#D4AF37", padding: 14, borderRadius: 10, alignItems: "center" }}><Text style={{ fontWeight: "900" }}>SALVAR EDIÇÃO</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => { setEditModal(false); setEditando(null); }} style={{ backgroundColor: "#222", padding: 14, borderRadius: 10, alignItems: "center", marginTop: 8 }}><Text style={{ color: "#fff", fontWeight: "900" }}>CANCELAR</Text></TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+
       {autorizado && (
         <ScrollView style={{ flex: 1, backgroundColor: "#000", padding: 12, paddingTop: 45 }}>
           <Text style={{ color: "#D4AF37", fontSize: 20, fontWeight: "900", textAlign: "center" }}>ADMIN - ACARAJÉ DA BENÇÃO</Text>
-          
-          <TouchableOpacity onPress={exportarClientes} style={{ backgroundColor: "#00C851", padding: 14, borderRadius: 10, marginTop: 12, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8 }}>
+          <TouchableOpacity onPress={exportarClientes} style={{ backgroundColor: "#00C851", padding: 14, borderRadius: 10, marginTop: 12, alignItems: "center" }}>
             <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>📥 BAIXAR LISTA DE CLIENTES ({clientes.length}) - GRÁTIS</Text>
           </TouchableOpacity>
-
           <TouchableOpacity onPress={apagarTodos} style={{ backgroundColor: "#330000", borderWidth: 1, borderColor: "red", padding: 12, borderRadius: 10, marginTop: 8, alignItems: "center" }}>
             <Text style={{ color: "red", fontWeight: "900", fontSize: 12 }}>🗑️ APAGAR TODO HISTÓRICO DE TESTES</Text>
           </TouchableOpacity>
-
           <View style={{ flexDirection: "row", gap: 6, marginTop: 15, marginBottom: 12 }}>
             <TouchableOpacity onPress={() => setAba("pedidos")} style={{ flex: 1, padding: 11, borderRadius: 10, backgroundColor: aba === "pedidos" ? "#D4AF37" : "#222", alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 10 }}>PEDIDOS ({pedidos.length})</Text></TouchableOpacity>
             <TouchableOpacity onPress={() => setAba("produtos")} style={{ flex: 1, padding: 11, borderRadius: 10, backgroundColor: aba === "produtos" ? "#D4AF37" : "#222", alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 10 }}>PRODUTOS</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => setAba("clientes")} style={{ flex: 1, padding: 11, borderRadius: 10, backgroundColor: aba === "clientes" ? "#00C851" : "#222", alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 10, color: aba === "clientes" ? "#fff" : "#fff" }}>CLIENTES ({clientes.length})</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setAba("clientes")} style={{ flex: 1, padding: 11, borderRadius: 10, backgroundColor: aba === "clientes" ? "#00C851" : "#222", alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 10 }}>CLIENTES ({clientes.length})</Text></TouchableOpacity>
             <TouchableOpacity onPress={() => setAba("config")} style={{ flex: 1, padding: 11, borderRadius: 10, backgroundColor: aba === "config" ? "#D4AF37" : "#222", alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 10 }}>CONFIG</Text></TouchableOpacity>
           </View>
-
           {aba === "clientes" && (
             <View>
               <View style={{ backgroundColor: "#102a15", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#00C851", marginBottom: 12 }}>
                 <Text style={{ color: "#00C851", fontWeight: "900", fontSize: 12 }}>💡 COMO USAR GRÁTIS:</Text>
-                <Text style={{ color: "#ccc", fontSize: 11, marginTop: 4 }}>1. Clique em BAIXAR LISTA acima{'\n'}2. Salve os números no celular da loja{'\n'}3. No WhatsApp Business > Nova Lista de Transmissão > Cola os contatos{'\n'}4. Manda promoção! Grátis!</Text>
+                <Text style={{ color: "#ccc", fontSize: 11, marginTop: 4 }}>1. BAIXAR LISTA{'\n'}2. Salva no cel{'\n'}3. WhatsApp Business > Lista Transmissão{'\n'}4. Manda promo!</Text>
               </View>
               {clientes.map((c: any) => (
                 <View key={c.id} style={{ backgroundColor: "#1a1a1a", padding: 12, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: "#333", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: "#fff", fontWeight: "900" }}>{c.nome || "Sem nome"}</Text>
                     <Text style={{ color: "#aaa", fontSize: 12 }}>📱 {c.whatsapp}</Text>
-                    <Text style={{ color: c.aceitaPromo ? "#00C851" : "#888", fontSize: 10 }}>{c.aceitaPromo ? "✅ Aceita promo" : "❌ Não aceita"}</Text>
                   </View>
                   <TouchableOpacity onPress={() => { const tel = String(c.whatsapp||"").replace(/\D/g,""); if(tel) Linking.openURL(`https://wa.me/55${tel}`); }} style={{ backgroundColor: "#25D366", padding: 10, borderRadius: 8 }}><Text style={{ fontSize: 12 }}>💬</Text></TouchableOpacity>
                 </View>
               ))}
-              {clientes.length === 0 && <Text style={{ color: "#666", textAlign: "center", marginTop: 20 }}>Nenhum cliente ainda. Vai encher automático após o deploy!</Text>}
             </View>
           )}
-
           {aba === "pedidos" && (
             <View>
               <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
@@ -355,7 +369,6 @@ export default function Admin() {
                         {!isPagoAuto && <TouchableOpacity onPress={() => marcarPago(p)} style={{ flex: 1, backgroundColor: "#222", borderWidth: 1, borderColor: "#00C851", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ color: "#00C851", fontWeight: "900", fontSize: 12 }}>MARCAR PAGO + IMPRIMIR</Text></TouchableOpacity>}
                         {!isEntregue && <TouchableOpacity onPress={() => marcarEntregue(p)} style={{ flex: 1, backgroundColor: isPagoAuto ? "#D4AF37" : "#333", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 12, color: isPagoAuto ? "#000" : "#fff" }}>📦 ENTREGUE</Text></TouchableOpacity>}
                         <TouchableOpacity onPress={() => imprimirPedidoTermica(p)} style={{ backgroundColor: "#fff", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ fontWeight: "900", fontSize: 12 }}>🖨️</Text></TouchableOpacity>
-                        <TouchableOpacity onPress={() => { const tel = String(p.telefone || p.whatsapp || "").replace(/\D/g, ""); if (tel) Linking.openURL(`https://wa.me/55${tel}`); }} style={{ backgroundColor: "#222", padding: 11, borderRadius: 10, alignItems: "center" }}><Text style={{ color: "#fff" }}>💬</Text></TouchableOpacity>
                       </View>
                     </View>
                   );
@@ -363,7 +376,6 @@ export default function Admin() {
               </View>
             </View>
           )}
-
           {aba === "produtos" && (
             <View>
               <View style={{ backgroundColor: "#1a1a1a", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#333" }}>
@@ -393,7 +405,6 @@ export default function Admin() {
               </View>
             </View>
           )}
-
           {aba === "config" && (
             <View style={{ backgroundColor: "#1a1a1a", padding: 16, borderRadius: 12, borderWidth: 1, borderColor: "#333" }}>
               <Text style={{ color: "#D4AF37", fontWeight: "900", marginBottom: 12 }}>CONFIGURAÇÕES</Text>
