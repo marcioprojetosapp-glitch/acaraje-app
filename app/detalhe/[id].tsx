@@ -27,7 +27,7 @@ type Produto = {
 export default function DetalheProduto() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { adicionarAoCarrinho, carrinho } = useCarrinho(); // 1. CORRIGIDO
+  const { adicionarAoCarrinho, carrinho } = useCarrinho();
 
   const [produto, setProduto] = useState<Produto | null>(null);
   const [quantidade, setQuantidade] = useState(1);
@@ -38,7 +38,10 @@ export default function DetalheProduto() {
   const [pimenta, setPimenta] = useState<"sem" | "com" | null>(null);
   const [qtdCopos, setQtdCopos] = useState(0);
 
-  const totalItens = carrinho.reduce((acc, item) => acc + item.qtd, 0); // 2. CORRIGIDO: qtd
+  const totalItens = carrinho.reduce(
+    (acc, item) => acc + (item.qtd || item.quantidade || 0),
+    0,
+  );
 
   useEffect(() => {
     carregarProduto();
@@ -52,57 +55,61 @@ export default function DetalheProduto() {
   }
 
   const cat = produto?.categoria?.toLowerCase() || "";
-  const nome = produto?.nome.toLowerCase() || "";
+  const nomeLower = produto?.nome.toLowerCase() || "";
 
   const ehComida =
     cat.includes("comida") ||
-    nome.includes("acarajé") ||
-    nome.includes("acaraje") ||
-    nome.includes("abará") ||
-    nome.includes("abara") ||
-    nome.includes("esfiha");
+    nomeLower.includes("acarajé") ||
+    nomeLower.includes("acaraje") ||
+    nomeLower.includes("abará") ||
+    nomeLower.includes("abara") ||
+    nomeLower.includes("esfiha");
   const ehBebida =
     cat.includes("bebida") ||
-    nome.includes("refrigerante") ||
-    nome.includes("suco") ||
-    nome.includes("agua");
+    nomeLower.includes("refrigerante") ||
+    nomeLower.includes("suco") ||
+    nomeLower.includes("agua") ||
+    nomeLower.includes("lata");
 
   const adicionalComida = ehComida && camarao ? 3 : 0;
-  const adicional = adicionalComida;
-
-  const adicionaisLista: string[] = [];
-  if (ehComida && camarao) adicionaisLista.push("Camarão");
-  if (ehComida && vatapa) adicionaisLista.push("Vatapá");
-  if (ehComida && salada) adicionaisLista.push("Salada");
-  if (ehComida && pimenta === "sem") adicionaisLista.push("Sem pimenta");
-  if (ehComida && pimenta === "com") adicionaisLista.push("Com pimenta");
-  if (ehBebida && qtdCopos > 0) adicionaisLista.push(`${qtdCopos} Copo(s)`);
-
-  const precoUnitario = produto ? produto.preco + adicional : 0;
+  const precoUnitario = produto ? produto.preco + adicionalComida : 0;
   const precoTotal = precoUnitario * quantidade;
 
   function handleAdicionar() {
     if (!produto) return;
 
-    const adicionaisListaOrdenada = [...adicionaisLista].sort();
-    const adicionaisKey = adicionaisListaOrdenada.join("-");
-    const itemId = `${produto.id}-${adicionaisKey}-${pimenta || "normal"}-${qtdCopos}`;
+    const adicionaisLista: string[] = [];
+    if (ehComida) {
+      if (camarao) adicionaisLista.push("Camarão");
+      if (vatapa) adicionaisLista.push("Vatapá");
+      if (salada) adicionaisLista.push("Salada");
+      if (pimenta === "sem") adicionaisLista.push("Sem pimenta");
+      if (pimenta === "com") adicionaisLista.push("Com pimenta");
+    }
+    if (ehBebida && qtdCopos > 0) {
+      adicionaisLista.push(`${qtdCopos} Copo(s) descartável`);
+    }
+
+    // --- CORREÇÃO QUE TIRA DUPLICADO ---
+    const listaUnica = [...new Set(adicionaisLista)];
+    const listaOrdenada = listaUnica.sort();
+
+    const adicionaisKey = listaOrdenada.join("-");
+    const itemId = `${produto.id}-${adicionaisKey}-${qtdCopos}`;
 
     adicionarAoCarrinho({
-      // 3. CORRIGIDO
-      id: itemId, // tem que ser id
+      id: itemId,
       nome: produto.nome,
       preco: precoUnitario,
-      qtd: quantidade, // tem que ser qtd
-      obs: adicionaisListaOrdenada.join(", "), // tem que ser obs
+      qtd: quantidade,
+      quantidade: quantidade,
+      obs: listaOrdenada.join(", "),
+      adicionais: listaOrdenada,
       imagem: produto.imagemURL,
-    });
+      imagemURL: produto.imagemURL,
+    } as any);
 
-    Alert.alert(
-      "Sucesso",
-      `${quantidade}x ${produto.nome} adicionado ao carrinho!`,
-    );
-
+    Alert.alert("Sucesso", `${quantidade}x ${produto.nome} adicionado!`);
     router.push("/(tabs)/carrinho");
   }
 
@@ -117,7 +124,6 @@ export default function DetalheProduto() {
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.btnCarrinho}
           onPress={() => router.push("/(tabs)/carrinho")}
@@ -129,7 +135,6 @@ export default function DetalheProduto() {
             </View>
           )}
         </TouchableOpacity>
-
         <View style={styles.containerImagem}>
           <Image
             source={{ uri: produto.imagemURL }}
@@ -137,7 +142,6 @@ export default function DetalheProduto() {
             resizeMode="cover"
           />
         </View>
-
         <View style={styles.info}>
           <Text style={styles.nome}>{produto.nome}</Text>
           <Text style={styles.descricao}>{produto.descricao}</Text>
@@ -145,10 +149,8 @@ export default function DetalheProduto() {
             R$ {precoUnitario.toFixed(2).replace(".", ",")} cada
           </Text>
         </View>
-
         <View style={styles.cardPersonalizar}>
           <Text style={styles.tituloPersonalizar}>Personalize seu pedido</Text>
-
           {ehComida && (
             <>
               <View style={styles.item}>
@@ -161,7 +163,6 @@ export default function DetalheProduto() {
                   onValueChange={setCamarao}
                   trackColor={{ false: "#555", true: "#D4AF37" }}
                   thumbColor="#fff"
-                  ios_backgroundColor="#555"
                 />
               </View>
               <View style={styles.item}>
@@ -171,7 +172,6 @@ export default function DetalheProduto() {
                   onValueChange={setVatapa}
                   trackColor={{ false: "#555", true: "#D4AF37" }}
                   thumbColor="#fff"
-                  ios_backgroundColor="#555"
                 />
               </View>
               <View style={styles.item}>
@@ -181,7 +181,6 @@ export default function DetalheProduto() {
                   onValueChange={setSalada}
                   trackColor={{ false: "#555", true: "#D4AF37" }}
                   thumbColor="#fff"
-                  ios_backgroundColor="#555"
                 />
               </View>
               <Text style={styles.subtitulo}>Pimenta</Text>
@@ -192,7 +191,6 @@ export default function DetalheProduto() {
                   onValueChange={(v) => setPimenta(v ? "sem" : null)}
                   trackColor={{ false: "#555", true: "#D4AF37" }}
                   thumbColor="#fff"
-                  ios_backgroundColor="#555"
                 />
               </View>
               <View style={[styles.item, { borderBottomWidth: 0 }]}>
@@ -202,12 +200,10 @@ export default function DetalheProduto() {
                   onValueChange={(v) => setPimenta(v ? "com" : null)}
                   trackColor={{ false: "#555", true: "#D4AF37" }}
                   thumbColor="#fff"
-                  ios_backgroundColor="#555"
                 />
               </View>
             </>
           )}
-
           {ehBebida && (
             <View style={styles.item}>
               <View>
@@ -232,7 +228,6 @@ export default function DetalheProduto() {
             </View>
           )}
         </View>
-
         <View style={styles.quantidade}>
           <TouchableOpacity
             style={styles.btnQtd}
@@ -249,7 +244,6 @@ export default function DetalheProduto() {
           </TouchableOpacity>
         </View>
       </View>
-
       <View style={styles.footer}>
         <TouchableOpacity style={styles.btnAdicionar} onPress={handleAdicionar}>
           <Text style={styles.btnAdicionarTxt}>

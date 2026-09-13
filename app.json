@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,7 +23,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.marcioapp22.acarajeapp"
+      "package": "com.marcioapp22.acarajeapp",
+      "runtimeVersion": "1.0.0"
     },
     "web": {
       "output": "static",
@@ -54,6 +58,9 @@
       "eas": {
         "projectId": "5f70bc8d-d58f-466c-98d7-5d4ae13c55b6"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5f70bc8d-d58f-466c-98d7-5d4ae13c55b6"
     }
   }
 }

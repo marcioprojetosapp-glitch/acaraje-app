@@ -30,7 +30,7 @@ import { db } from "../src/lib/firebase";
 
 const CLOUD_NAME = "qbl22xip";
 const UPLOAD_PRESET = "mmpaixao_preset";
-const SENHA_CORRETA = "7788"; // <-- TROCA AQUI SUA SENHA NOVA
+const SENHA_CORRETA = "7788";
 
 export default function Admin() {
   const [modalSenhaVisivel, setModalSenhaVisivel] = useState(true);
@@ -65,44 +65,99 @@ export default function Admin() {
     }
   };
 
+  // ✅✅ CORRIGIDO - AGORA MOSTRA PIMENTA, CAMARÃO, QTD DE COPOS
+  function montarResumoDetalhado(pedido: any) {
+    // PRIORIDADE 1: Sempre montar pelos itens (que tem obs com camarão/pimenta)
+    if (pedido.itens && pedido.itens.length > 0) {
+      const resumoMontado = pedido.itens
+        .map((i: any) => {
+          const qtd = i.qtd || i.quantidade || 1;
+          const nomeP = (i.nome || i.title || "ITEM").toUpperCase();
+          let linha = `${qtd}x ${nomeP}`; // AQUI JÁ MOSTRA QTD DE COPOS EX: 3x COPO
+          const extrasSet = new Set<string>();
+
+          if (Array.isArray(i.adicionais) && i.adicionais.length) {
+            i.adicionais.forEach((c: any) => {
+              const t =
+                typeof c === "string"
+                  ? c
+                  : c.nome || c.nomeComplemento || c.title || c.label || "";
+              if (t && String(t).trim())
+                extrasSet.add(String(t).trim().toUpperCase());
+            });
+          }
+          // SEU CASO ESTÁ AQUI: obs = "Camarão, Com pimenta, Salada, Vatapá"
+          if (i.obs && typeof i.obs === "string" && i.obs.trim() !== "") {
+            i.obs
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+              .forEach((p: string) => {
+                extrasSet.add(p.toUpperCase());
+              });
+          }
+          if (i.observacao) extrasSet.add(`OBS: ${i.observacao.toUpperCase()}`);
+
+          const extras = Array.from(extrasSet).map((e) => ` + ${e}`);
+          if (extras.length > 0) return linha + "\n" + extras.join("\n");
+          return linha;
+        })
+        .join("\n\n");
+
+      if (resumoMontado && resumoMontado.length > 3) return resumoMontado;
+    }
+
+    // PRIORIDADE 2: Se não tem itens, usa o resumo antigo
+    if (pedido.resumoDetalhado && pedido.resumoDetalhado.length > 5)
+      return pedido.resumoDetalhado;
+    if (pedido.resumo && pedido.resumo.length > 5) return pedido.resumo;
+
+    return "Sem detalhes";
+  }
+
   function imprimirPedidoTermica(pedido: any) {
     if (Platform.OS !== "web") {
       Alert.alert("Só imprime no PC");
       return;
     }
-    const win = window.open("", "_blank", "width=320,height=800");
-    if (!win) return;
     const nomeCliente = pedido.nome || pedido.cliente || "Sem nome";
     const totalExibir = pedido.totalFormatado || pedido.total || "0";
     const data = new Date().toLocaleString("pt-BR");
     const idCurto = pedido.id.slice(-6).toUpperCase();
-    const resumo =
-      pedido.resumo ||
-      pedido.itens
-        ?.map((i: any) => `${i.qtd || i.quantidade || 1}x ${i.nome || i.title}`)
-        .join("\n") ||
-      "Sem detalhes";
+    const resumo = montarResumoDetalhado(pedido);
 
-    win.document.write(`
+    let iframe = document.getElementById(
+      "iframe-impressao",
+    ) as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "iframe-impressao";
+      iframe.style.position = "absolute";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+    }
+    const html = `
       <html><head><title>${idCurto}</title>
       <style>
         @page { size: 80mm auto; margin: 0; }
         body { width: 72mm; font-family: 'Courier New', monospace; font-size: 13px; padding: 4mm; margin:0; color:#000; }
-      .titulo { text-align:center; font-weight:900; font-size:18px; }
-      .sub { text-align:center; font-size:11px; }
-      .linha { border-top:1px dashed #000; margin:8px 0; }
-      .linha2 { border-top:2px solid #000; margin:8px 0; }
-      .corte { page-break-after: always; }
-      .big { font-size:16px; font-weight:900; }
+    .titulo { text-align:center; font-weight:900; font-size:18px; }
+    .sub { text-align:center; font-size:11px; }
+    .linha { border-top:1px dashed #000; margin:8px 0; }
+    .linha2 { border-top:2px solid #000; margin:8px 0; }
+    .corte { page-break-after: always; }
+    .big { font-size:16px; font-weight:900; }
       </style>
       </head>
-      <body onload="setTimeout(()=>{window.print(); window.close();}, 400);">
+      <body>
         <div class="titulo">COZINHA - FRITAR</div>
         <div class="sub">${data} | #${idCurto}</div>
         <div class="linha2"></div>
         <div class="big">${nomeCliente.toUpperCase()}</div>
         <div class="linha"></div>
-        <div style="white-space:pre-wrap; font-size:15px; font-weight:bold; line-height:18px;">${resumo}</div>
+        <div style="white-space:pre-wrap; font-size:15px; font-weight:bold; line-height:20px;">${resumo}</div>
         <div class="linha2"></div>
         <div style="text-align:center; font-weight:900; font-size:14px;">*** COZINHA ***</div>
         <br/><br/><br/>
@@ -113,16 +168,22 @@ export default function Admin() {
         <div><b>CLIENTE:</b> ${nomeCliente}</div>
         <div><b>ZAP:</b> ${pedido.whatsapp || pedido.telefone || ""}</div>
         <div><b>END:</b> ${pedido.endereco || "RETIRADA NO BALCAO"}</div>
-        <div><b>PAG:</b> ${(pedido.formaPagamento || "").toUpperCase()} - ${(pedido.status || "").toUpperCase()}</div>
+        <div><b>PAG:</b> ${(pedido.formaPagamento || "").toUpperCase()} - PAGO</div>
         <div class="linha"></div>
-        <div style="white-space:pre-wrap; font-size:13px;">${resumo}</div>
+        <div style="white-space:pre-wrap; font-size:13px; line-height:18px;">${resumo}</div>
         <div class="linha"></div>
         <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:900;"><span>TOTAL</span><span>R$ ${totalExibir}</span></div>
         <div class="linha2"></div>
         <div style="text-align:center; font-weight:900;">*** MOTOBOY ***</div>
+        <script>window.onload = function(){ window.print(); }</script>
       </body></html>
-    `);
-    win.document.close();
+    `;
+    const docIframe = iframe.contentDocument || iframe.contentWindow?.document;
+    if (docIframe) {
+      docIframe.open();
+      docIframe.write(html);
+      docIframe.close();
+    }
   }
 
   useEffect(() => {
@@ -132,35 +193,27 @@ export default function Admin() {
       async (s) => {
         const lista = s.docs.map((d) => ({ id: d.id, ...d.data() }));
         setPedidos(lista);
-        if (Platform.OS === "web") {
-          for (const pedido of lista as any[]) {
-            const isPago =
-              pedido.status === "pago" ||
-              pedido.pago === true ||
-              pedido.statusPagamento === "pago";
-            const jaFoi =
-              pedido.impresso === true || jaImpressos.current.has(pedido.id);
-            if (isPago && !jaFoi) {
-              jaImpressos.current.add(pedido.id);
-              imprimirPedidoTermica(pedido);
-              try {
-                await updateDoc(doc(db, "pedidos", pedido.id), {
-                  impresso: true,
-                  impressoEm: new Date(),
-                });
-              } catch {}
-              try {
-                const a = new Audio(
-                  "https://cdn.pixabay.com/audio/2022/03/10/audio_55117a64d4.mp3",
-                );
-                a.play().catch(() => {});
-              } catch {}
-            }
-          }
-        }
       },
     );
   }, [autorizado]);
+
+  useEffect(() => {
+    if (!autorizado || pedidos.length === 0) return;
+    pedidos.forEach((p: any) => {
+      if (!jaImpressos.current.has(p.id) && p.status !== "entregue") {
+        const tempoCriacao = p.criadoEm?.toDate?.()?.getTime() || 0;
+        const ehNovo = Date.now() - tempoCriacao < 3 * 60 * 1000;
+        if (ehNovo || !p.impresso) {
+          console.log("🖨️ Imprimindo automático:", p.id);
+          imprimirPedidoTermica(p);
+          jaImpressos.current.add(p.id);
+          updateDoc(doc(db, "pedidos", p.id), { impresso: true }).catch(
+            () => {},
+          );
+        }
+      }
+    });
+  }, [pedidos, autorizado]);
 
   useEffect(() => {
     if (!autorizado) return;
@@ -180,6 +233,8 @@ export default function Admin() {
     const isPagoAuto =
       p.pago === true ||
       p.status === "pago" ||
+      p.statusPagamento === "approved" ||
+      p.statusPagamento === "pago" ||
       String(p.formaPagamento || "")
         .toUpperCase()
         .includes("APP");
@@ -190,52 +245,66 @@ export default function Admin() {
     return true;
   });
 
-  const marcarPago = async (p) => {
-    await updateDoc(doc(db, "pedidos", p.id), { pago: true, status: "pago" });
-  };
-  const marcarEntregue = async (p) => {
-    await updateDoc(doc(db, "pedidos", p.id), { status: "entregue" });
-  };
-  const apagarPedido = (id) => {
-    Alert.alert("Apagar?", "Apagar esse pedido?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Apagar",
-        style: "destructive",
-        onPress: async () => {
-          await deleteDoc(doc(db, "pedidos", id));
-        },
-      },
-    ]);
-  };
-  const apagarTodos = () => {
-    Alert.alert(
-      "APAGAR TUDO?",
-      "Isso vai apagar TODOS os pedidos de teste. Não volta mais!",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "APAGAR TUDO",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const snap = await getDocs(collection(db, "pedidos"));
-              for (const d of snap.docs) {
-                await deleteDoc(doc(db, "pedidos", d.id));
-              }
-              Alert.alert("Limpo!", "Histórico apagado com sucesso");
-            } catch (e) {
-              Alert.alert("Erro", "Não deu pra apagar");
-            }
+  const apagarPedido = async (id: string) => {
+    try {
+      const confirma =
+        Platform.OS === "web" ? window.confirm("Apagar esse pedido?") : true;
+      if (Platform.OS !== "web") {
+        Alert.alert("Apagar?", "Apagar esse pedido?", [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Apagar",
+            style: "destructive",
+            onPress: async () => {
+              await deleteDoc(doc(db, "pedidos", id));
+            },
           },
-        },
-      ],
-    );
+        ]);
+        return;
+      }
+      if (!confirma) return;
+      await deleteDoc(doc(db, "pedidos", id));
+    } catch (e: any) {
+      alert("Erro ao apagar: " + e.message);
+    }
   };
 
-  const uploadToCloudinary = async (uri) => {
+  const apagarTodos = async () => {
+    try {
+      const confirma =
+        Platform.OS === "web"
+          ? window.confirm("APAGAR TODO HISTÓRICO DE TESTES?")
+          : true;
+      if (Platform.OS !== "web") {
+        Alert.alert("APAGAR TUDO?", "Apagar TODOS?", [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "APAGAR TUDO",
+            style: "destructive",
+            onPress: async () => {
+              const snap = await getDocs(collection(db, "pedidos"));
+              for (const d of snap.docs)
+                await deleteDoc(doc(db, "pedidos", d.id));
+            },
+          },
+        ]);
+        return;
+      }
+      if (!confirma) return;
+      const snap = await getDocs(collection(db, "pedidos"));
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, "pedidos", d.id));
+      }
+      alert("Histórico limpo! (" + snap.size + " pedidos)");
+    } catch (e: any) {
+      alert("Erro ao apagar tudo: " + e.message);
+    }
+  };
+
+  const uploadToCloudinary = async (uri: string) => {
     setUploading(true);
-    const formData = new FormData(); // @ts-ignore
+    const formData = new FormData();
+    // @ts-ignore
     formData.append("file", { uri, type: "image/jpeg", name: "produto.jpg" });
     formData.append("upload_preset", UPLOAD_PRESET);
     try {
@@ -245,8 +314,9 @@ export default function Admin() {
       );
       const data = await res.json();
       if (data.secure_url) {
-        if (editando) setEditando({ ...editando, imagemURL: data.secure_url });
-        else setImageUrl(data.secure_url);
+        if (editando)
+          setEditando({ ...editando, imagemURL: data.secure_url } as any);
+        else setImageUrl(data.secure_url as any);
       }
     } finally {
       setUploading(false);
@@ -280,16 +350,34 @@ export default function Admin() {
     setImageUrl(null);
   };
   const salvarEdicao = async () => {
-    const qtd = Number(editando.estoque) || 0;
-    await updateDoc(doc(db, "produtos", editando.id), {
-      nome: editando.nome,
-      preco: Number(editando.preco),
-      descricao: editando.descricao,
+    const qtd = Number((editando as any).estoque) || 0;
+    await updateDoc(doc(db, "produtos", (editando as any).id), {
+      nome: (editando as any).nome,
+      preco: Number((editando as any).preco),
+      descricao: (editando as any).descricao,
       estoque: qtd,
-      imagemURL: editando.imagemURL,
-      disponivel: qtd > 0 ? editando.disponivel : false,
+      imagemURL: (editando as any).imagemURL,
+      disponivel: qtd > 0 ? (editando as any).disponivel : false,
     });
     setEditModal(false);
+  };
+  const salvarConfig = async () => {
+    await setDoc(
+      doc(db, "config", "loja"),
+      {
+        taxaEntrega: Number(config.taxaEntrega),
+        tempoMedio: config.tempoMedio,
+        aberto: config.aberto,
+      },
+      { merge: true },
+    );
+    Alert.alert("Salvo", "Configurações salvas!");
+  };
+  const marcarPago = async (p: any) => {
+    await updateDoc(doc(db, "pedidos", p.id), { pago: true, status: "pago" });
+  };
+  const marcarEntregue = async (p: any) => {
+    await updateDoc(doc(db, "pedidos", p.id), { status: "entregue" });
   };
 
   return (
@@ -360,7 +448,6 @@ export default function Admin() {
           </View>
         </View>
       </Modal>
-
       {autorizado && (
         <ScrollView
           style={{
@@ -380,7 +467,6 @@ export default function Admin() {
           >
             ADMIN - ACARAJÉ DA BENÇÃO (2 VIAS)
           </Text>
-
           <TouchableOpacity
             onPress={apagarTodos}
             style={{
@@ -397,7 +483,6 @@ export default function Admin() {
               🗑️ APAGAR TODO HISTÓRICO DE TESTES
             </Text>
           </TouchableOpacity>
-
           <View
             style={{
               flexDirection: "row",
@@ -445,13 +530,12 @@ export default function Admin() {
               <Text style={{ fontWeight: "900", fontSize: 11 }}>CONFIG</Text>
             </TouchableOpacity>
           </View>
-
           {aba === "pedidos" && (
             <View>
               <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
                 {[
                   { id: "todos", lb: "TODOS" },
-                  { id: "novo", lb: `A PAGAR` },
+                  { id: "novo", lb: "A PAGAR" },
                   { id: "pago", lb: "PAGOS" },
                   { id: "entregue", lb: "ENTREGUES" },
                 ].map((f) => (
@@ -478,13 +562,14 @@ export default function Admin() {
                   </TouchableOpacity>
                 ))}
               </View>
-
               <View style={{ gap: 12 }}>
                 {pedidosFiltrados.map((p: any) => {
                   const isEntrega = p.tipoEntrega !== "retirada";
                   const isPagoAuto =
                     p.pago === true ||
                     p.status === "pago" ||
+                    p.statusPagamento === "approved" ||
+                    p.statusPagamento === "pago" ||
                     String(p.formaPagamento || "")
                       .toUpperCase()
                       .includes("APP");
@@ -610,14 +695,7 @@ export default function Admin() {
                           borderRadius: 8,
                         }}
                       >
-                        {p.resumo ||
-                          p.itens
-                            ?.map(
-                              (i: any) =>
-                                `${i.qtd || i.quantidade || 1}x ${i.nome || i.title}`,
-                            )
-                            .join("\n") ||
-                          "Sem detalhes"}
+                        {montarResumoDetalhado(p)}
                       </Text>
                       <View style={{ marginTop: 8, gap: 3 }}>
                         <Text style={{ color: "#aaa", fontSize: 12 }}>
@@ -718,10 +796,10 @@ export default function Admin() {
               <View
                 style={{
                   backgroundColor: "#1a1a1a",
-                  padding: 15,
-                  borderRadius: 14,
+                  padding: 14,
+                  borderRadius: 12,
                   borderWidth: 1,
-                  borderColor: "#D4AF37",
+                  borderColor: "#333",
                 }}
               >
                 <Text
@@ -733,31 +811,33 @@ export default function Admin() {
                 >
                   CADASTRAR PRODUTO
                 </Text>
-                {imageUrl && (
-                  <Image
-                    source={{ uri: imageUrl }}
-                    style={{
-                      width: 100,
-                      height: 100,
-                      borderRadius: 10,
-                      alignSelf: "center",
-                      marginBottom: 10,
-                    }}
-                  />
-                )}
                 <TouchableOpacity
                   onPress={pickImage}
                   style={{
                     backgroundColor: "#222",
-                    padding: 12,
+                    height: 120,
                     borderRadius: 10,
+                    justifyContent: "center",
                     alignItems: "center",
                     marginBottom: 10,
+                    borderWidth: 1,
+                    borderColor: "#333",
                   }}
                 >
-                  <Text style={{ color: "#fff" }}>
-                    {uploading ? "Enviando..." : "📷 Escolher Foto"}
-                  </Text>
+                  {imageUrl ? (
+                    <Image
+                      source={{ uri: imageUrl as any }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 10,
+                      }}
+                    />
+                  ) : (
+                    <Text style={{ color: "#888" }}>
+                      {uploading ? "ENVIANDO..." : "📷 FOTO"}
+                    </Text>
+                  )}
                 </TouchableOpacity>
                 <TextInput
                   placeholder="Nome"
@@ -768,45 +848,28 @@ export default function Admin() {
                     backgroundColor: "#000",
                     color: "#fff",
                     padding: 12,
-                    borderRadius: 10,
+                    borderRadius: 8,
                     borderWidth: 1,
                     borderColor: "#333",
+                    marginBottom: 8,
                   }}
                 />
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                  <TextInput
-                    placeholder="Preço"
-                    placeholderTextColor="#666"
-                    value={preco}
-                    onChangeText={setPreco}
-                    keyboardType="numeric"
-                    style={{
-                      flex: 1,
-                      backgroundColor: "#000",
-                      color: "#fff",
-                      padding: 12,
-                      borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: "#333",
-                    }}
-                  />
-                  <TextInput
-                    placeholder="Estoque"
-                    placeholderTextColor="#D4AF37"
-                    value={estoque}
-                    onChangeText={setEstoque}
-                    keyboardType="numeric"
-                    style={{
-                      flex: 1,
-                      backgroundColor: "#000",
-                      color: "#D4AF37",
-                      padding: 12,
-                      borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: "#D4AF37",
-                    }}
-                  />
-                </View>
+                <TextInput
+                  placeholder="Preço ex: 15.00"
+                  placeholderTextColor="#666"
+                  value={preco}
+                  onChangeText={setPreco}
+                  keyboardType="numeric"
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#333",
+                    marginBottom: 8,
+                  }}
+                />
                 <TextInput
                   placeholder="Descrição"
                   placeholderTextColor="#666"
@@ -816,10 +879,26 @@ export default function Admin() {
                     backgroundColor: "#000",
                     color: "#fff",
                     padding: 12,
-                    borderRadius: 10,
+                    borderRadius: 8,
                     borderWidth: 1,
                     borderColor: "#333",
-                    marginTop: 10,
+                    marginBottom: 8,
+                  }}
+                />
+                <TextInput
+                  placeholder="Estoque"
+                  placeholderTextColor="#666"
+                  value={estoque}
+                  onChangeText={setEstoque}
+                  keyboardType="numeric"
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#333",
+                    marginBottom: 10,
                   }}
                 />
                 <TouchableOpacity
@@ -828,12 +907,86 @@ export default function Admin() {
                     backgroundColor: "#D4AF37",
                     padding: 14,
                     borderRadius: 10,
-                    marginTop: 10,
                     alignItems: "center",
                   }}
                 >
-                  <Text style={{ fontWeight: "900" }}>ADICIONAR</Text>
+                  <Text style={{ fontWeight: "900" }}>SALVAR PRODUTO</Text>
                 </TouchableOpacity>
+              </View>
+              <View style={{ gap: 10, marginTop: 15 }}>
+                {produtos.map((pr: any) => (
+                  <View
+                    key={pr.id}
+                    style={{
+                      backgroundColor: "#1a1a1a",
+                      padding: 12,
+                      borderRadius: 10,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      borderWidth: 1,
+                      borderColor: "#333",
+                    }}
+                  >
+                    <Image
+                      source={{ uri: pr.imagemURL }}
+                      style={{
+                        width: 50,
+                        height: 50,
+                        borderRadius: 8,
+                        backgroundColor: "#222",
+                      }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: "#fff", fontWeight: "900" }}>
+                        {pr.nome}
+                      </Text>
+                      <Text style={{ color: "#D4AF37" }}>R$ {pr.preco}</Text>
+                      <Text
+                        style={{
+                          color: pr.disponivel ? "#00C851" : "red",
+                          fontSize: 10,
+                        }}
+                      >
+                        {pr.disponivel
+                          ? `ESTOQUE: ${pr.estoque}`
+                          : "SEM ESTOQUE"}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditando(pr);
+                        setEditModal(true);
+                      }}
+                      style={{
+                        backgroundColor: "#333",
+                        padding: 10,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 10 }}>
+                        EDITAR
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        if (
+                          Platform.OS === "web"
+                            ? window.confirm("Apagar produto?")
+                            : true
+                        )
+                          await deleteDoc(doc(db, "produtos", pr.id));
+                      }}
+                      style={{
+                        backgroundColor: "#330000",
+                        padding: 10,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ color: "red", fontSize: 10 }}>X</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
             </View>
           )}
@@ -841,43 +994,67 @@ export default function Admin() {
             <View
               style={{
                 backgroundColor: "#1a1a1a",
-                padding: 20,
-                borderRadius: 14,
+                padding: 16,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#333",
               }}
             >
-              <Text style={{ color: "#fff" }}>Taxa Entrega R$</Text>
+              <Text
+                style={{
+                  color: "#D4AF37",
+                  fontWeight: "900",
+                  marginBottom: 12,
+                }}
+              >
+                CONFIGURAÇÕES
+              </Text>
+              <Text style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>
+                Taxa de Entrega (R$)
+              </Text>
               <TextInput
                 value={String(config.taxaEntrega)}
-                onChangeText={(v) =>
-                  setConfig({ ...config, taxaEntrega: Number(v) })
+                onChangeText={(t) =>
+                  setConfig({ ...config, taxaEntrega: Number(t) || 0 })
                 }
                 keyboardType="numeric"
                 style={{
                   backgroundColor: "#000",
                   color: "#fff",
                   padding: 12,
-                  borderRadius: 10,
-                  marginTop: 5,
+                  borderRadius: 8,
                   borderWidth: 1,
                   borderColor: "#333",
+                  marginBottom: 12,
+                }}
+              />
+              <Text style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>
+                Tempo Médio
+              </Text>
+              <TextInput
+                value={config.tempoMedio}
+                onChangeText={(t) => setConfig({ ...config, tempoMedio: t })}
+                style={{
+                  backgroundColor: "#000",
+                  color: "#fff",
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: "#333",
+                  marginBottom: 12,
                 }}
               />
               <TouchableOpacity
-                onPress={async () => {
-                  await setDoc(doc(db, "config", "loja"), config, {
-                    merge: true,
-                  });
-                  Alert.alert("Salvo!");
-                }}
+                onPress={salvarConfig}
                 style={{
                   backgroundColor: "#D4AF37",
-                  padding: 15,
-                  borderRadius: 12,
-                  marginTop: 20,
+                  padding: 14,
+                  borderRadius: 10,
                   alignItems: "center",
+                  marginTop: 10,
                 }}
               >
-                <Text style={{ fontWeight: "900" }}>SALVAR</Text>
+                <Text style={{ fontWeight: "900" }}>SALVAR CONFIG</Text>
               </TouchableOpacity>
             </View>
           )}

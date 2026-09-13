@@ -29,35 +29,42 @@ type CarrinhoContextType = {
 const CarrinhoContext = createContext<CarrinhoContextType>(
   {} as CarrinhoContextType,
 );
-
 const parsePreco = (v: any): number => {
   if (typeof v === "number") return v;
   if (!v) return 0;
   const n = parseFloat(String(v).replace("R$", "").replace(",", ".").trim());
   return isNaN(n) ? 0 : n;
 };
-
 const getId = (item: any) => item.itemId || item.id;
 const getQtd = (item: any) => item.quantidade || item.qtd || 1;
+const getIdPersonalizado = (item: any) => {
+  const base = item.itemId || item.id || item.nome;
+  const obs = (item.obs || "").trim().toLowerCase();
+  const adic = (item.adicionais || []).join("|").toLowerCase();
+  return `${base}__${obs}__${adic}`;
+};
 
 export const CarrinhoProvider = ({ children }: { children: ReactNode }) => {
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
-
   const adicionarAoCarrinho = (item: any) => {
-    const id = getId(item);
+    const idPerso = getIdPersonalizado(item);
+    const idBase = getId(item);
     const novo = {
       ...item,
-      itemId: id,
-      id: id,
+      itemId: idPerso,
+      id: idPerso,
+      idOriginal: idBase,
       preco: parsePreco(item.preco),
       quantidade: item.quantidade || item.qtd || 1,
       qtd: item.quantidade || item.qtd || 1,
+      obs: item.obs || "",
+      adicionais: item.adicionais || [],
     };
     setCarrinho((prev) => {
-      const existe = prev.find((p) => getId(p) === id);
+      const existe = prev.find((p) => getId(p) === idPerso);
       if (existe) {
         return prev.map((p) =>
-          getId(p) === id
+          getId(p) === idPerso
             ? {
                 ...p,
                 quantidade: getQtd(p) + novo.quantidade,
@@ -69,11 +76,9 @@ export const CarrinhoProvider = ({ children }: { children: ReactNode }) => {
       return [...prev, novo];
     });
   };
-
   const removerDoCarrinho = (id: string) => {
     setCarrinho((prev) => prev.filter((item) => getId(item) !== id));
   };
-
   const aumentarQtd = (id: string) => {
     setCarrinho((prev) =>
       prev.map((p) =>
@@ -83,7 +88,6 @@ export const CarrinhoProvider = ({ children }: { children: ReactNode }) => {
       ),
     );
   };
-
   const diminuirQtd = (id: string) => {
     setCarrinho((prev) =>
       prev.map((p) => {
@@ -99,12 +103,10 @@ export const CarrinhoProvider = ({ children }: { children: ReactNode }) => {
       }),
     );
   };
-
   const total = carrinho.reduce(
     (acc, item) => acc + parsePreco(item.preco) * getQtd(item),
     0,
   );
-
   return (
     <CarrinhoContext.Provider
       value={{
@@ -124,5 +126,4 @@ export const CarrinhoProvider = ({ children }: { children: ReactNode }) => {
     </CarrinhoContext.Provider>
   );
 };
-
 export const useCarrinho = () => useContext(CarrinhoContext);

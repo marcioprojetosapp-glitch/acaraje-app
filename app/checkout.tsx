@@ -43,7 +43,48 @@ export default function Checkout() {
     }
     setLoading(true);
     try {
-      // CRIA COMO PENDENTE AINDA, NÃO PAGO
+      // --- CORREÇÃO DEFINITIVA SEM DUPLICAR ---
+      const resumoParaImpressora = carrinho
+        .map((item: any) => {
+          const qtd = item.qtd || item.quantidade || 1;
+          const nomeItem = (item.nome || "ITEM").toUpperCase();
+
+          // Junta tudo num Set pra nunca duplicar
+          const todosDetalhes = new Set<string>();
+
+          if (item.obs) {
+            item.obs.split(",").forEach((s: string) => {
+              const t = s.trim();
+              if (t) todosDetalhes.add(t);
+            });
+          }
+          if (Array.isArray(item.adicionais)) {
+            item.adicionais.forEach((s: string) => {
+              const t = s.trim();
+              if (t) todosDetalhes.add(t);
+            });
+          }
+
+          let detalhes = "";
+          if (todosDetalhes.size > 0) {
+            detalhes =
+              "\n" +
+              Array.from(todosDetalhes)
+                .sort()
+                .map((p) => ` + ${p}`)
+                .join("\n");
+          }
+
+          if (item.observacao) {
+            detalhes += `\n * OBS: ${item.observacao}`;
+          }
+
+          return `${qtd}x ${nomeItem}${detalhes}`;
+        })
+        .join("\n\n");
+
+      console.log("RESUMO FINAL:", resumoParaImpressora);
+
       const docRef = await addDoc(collection(db, "pedidos"), {
         nome: nome.trim(),
         whatsapp: whatsapp.trim(),
@@ -51,7 +92,8 @@ export default function Checkout() {
         endereco: ehRetirada
           ? "RETIRADA NO LOCAL - Santo Amaro"
           : endereco.trim(),
-        resumo: resumo ? decodeURIComponent(resumo as string) : "",
+        resumo: resumoParaImpressora,
+        resumoDetalhado: resumoParaImpressora,
         itens: carrinho,
         subtotal: subtotalNum,
         taxaEntrega: ehRetirada ? 0 : freteNum,
@@ -63,9 +105,9 @@ export default function Checkout() {
         status: "pendente",
         statusPagamento: "pending",
         criadoEm: serverTimestamp(),
+        impresso: false,
       });
 
-      // VAI PRO PAGAMENTO QUE JÁ ESTAVA FUNCIONANDO
       router.replace(`/pagamento?pedidoId=${docRef.id}`);
     } catch (e) {
       Alert.alert("Erro", "Não foi possível criar pedido");
