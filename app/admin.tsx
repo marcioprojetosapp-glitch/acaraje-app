@@ -505,11 +505,7 @@ export default function Admin() {
       },
       { merge: true },
     );
-    Alert.alert(
-      "Salvo",
-      "Configurações salvas! Agora todo o site obedece o ADMIN.",
-    );
-  };
+   window.alert("✅ SALVO! Agora: " + config.tempoEntrega + " / " + config.tempoRetirada);
   const marcarPago = async (p) => {
     await updateDoc(doc(db, "pedidos", p.id), { pago: true, status: "pago" });
   };
