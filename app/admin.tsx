@@ -506,7 +506,12 @@ export default function Admin() {
       { merge: true },
     );
     window.alert(
-      "✅ SALVO! Agora: " + config.tempoEntrega + " / " + config.tempoRetirada,
+      "✅ SALVO! Frete: R$ " +
+        config.taxaEntrega +
+        " | Agora: " +
+        config.tempoEntrega +
+        " / " +
+        config.tempoRetirada,
     );
   };
   const marcarPago = async (p) => {
