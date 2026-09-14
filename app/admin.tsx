@@ -42,6 +42,8 @@ export default function Admin() {
   const [filtro, setFiltro] = useState("todos");
   const [config, setConfig] = useState({
     taxaEntrega: 8,
+    tempoEntrega: "40 a 60 min",
+    tempoRetirada: "15 a 25 min",
     tempoMedio: "40 a 60 min",
     aberto: true,
   });
@@ -235,7 +237,7 @@ export default function Admin() {
       (frete === 0 ? "GRATIS" : "R$ " + frete.toFixed(2).replace(".", ",")) +
       "</span></div><div style='display:flex;justify-content:space-between;font-size:18px;font-weight:900;margin-top:6px;border-top:1px dashed #000;padding-top:6px;'><span>TOTAL</span><span>" +
       totalExibir +
-      "</span></div><div class='linha2'></div><div style='text-align:center;font-weight:900;'>*** MOTOBOY ***</div><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>";
+      "</span></div><div class='linha2'></div><div style='text-align:center;font-weight:900;'>*** MOTOBOY ***</div><br><br><br><br><br><br><br><script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>";
     const docIframe = iframe.contentDocument || iframe.contentWindow.document;
     if (docIframe) {
       docIframe.open();
@@ -285,7 +287,15 @@ export default function Admin() {
   useEffect(() => {
     if (!autorizado) return;
     return onSnapshot(doc(db, "config", "loja"), (s) => {
-      if (s.exists()) setConfig((p) => ({ ...p, ...s.data() }));
+      if (s.exists()) {
+        const data = s.data();
+        setConfig((p) => ({
+          ...p,
+          ...data,
+          tempoEntrega: data.tempoEntrega || data.tempoMedio || p.tempoEntrega,
+          tempoRetirada: data.tempoRetirada || p.tempoRetirada,
+        }));
+      }
     });
   }, [autorizado]);
   useEffect(() => {
@@ -488,12 +498,17 @@ export default function Admin() {
       doc(db, "config", "loja"),
       {
         taxaEntrega: Number(config.taxaEntrega),
-        tempoMedio: config.tempoMedio,
+        tempoMedio: config.tempoEntrega,
+        tempoEntrega: config.tempoEntrega,
+        tempoRetirada: config.tempoRetirada,
         aberto: config.aberto,
       },
       { merge: true },
     );
-    Alert.alert("Salvo", "Configurações salvas!");
+    Alert.alert(
+      "Salvo",
+      "Configurações salvas! Agora todo o site obedece o ADMIN.",
+    );
   };
   const marcarPago = async (p) => {
     await updateDoc(doc(db, "pedidos", p.id), { pago: true, status: "pago" });
@@ -821,6 +836,18 @@ export default function Admin() {
             }}
           >
             <TouchableOpacity
+              onPress={() => setAba("produtos")}
+              style={{
+                flex: 1,
+                padding: 11,
+                borderRadius: 10,
+                backgroundColor: aba === "produtos" ? "#D4AF37" : "#222",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontWeight: "900", fontSize: 10 }}>PRODUTOS</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => setAba("pedidos")}
               style={{
                 flex: 1,
@@ -833,18 +860,6 @@ export default function Admin() {
               <Text style={{ fontWeight: "900", fontSize: 10 }}>
                 PEDIDOS ({pedidos.length})
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setAba("produtos")}
-              style={{
-                flex: 1,
-                padding: 11,
-                borderRadius: 10,
-                backgroundColor: aba === "produtos" ? "#D4AF37" : "#222",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ fontWeight: "900", fontSize: 10 }}>PRODUTOS</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setAba("clientes")}
@@ -1338,9 +1353,10 @@ export default function Admin() {
                   color: "#D4AF37",
                   fontWeight: "900",
                   marginBottom: 12,
+                  fontSize: 16,
                 }}
               >
-                CONFIGURAÇÕES
+                CONFIGURAÇÕES - O ADMIN MANDA
               </Text>
               <Text style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>
                 Taxa de Entrega (R$)
@@ -1358,36 +1374,85 @@ export default function Admin() {
                   borderRadius: 8,
                   borderWidth: 1,
                   borderColor: "#333",
-                  marginBottom: 12,
+                  marginBottom: 16,
                 }}
               />
-              <Text style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>
-                Tempo Médio
+              <Text
+                style={{
+                  color: "#D4AF37",
+                  fontSize: 12,
+                  marginBottom: 4,
+                  fontWeight: "900",
+                }}
+              >
+                ⏱️ TEMPO ENTREGA (cliente vê no checkout)
               </Text>
               <TextInput
-                value={config.tempoMedio}
-                onChangeText={(t) => setConfig({ ...config, tempoMedio: t })}
+                value={config.tempoEntrega}
+                onChangeText={(t) =>
+                  setConfig({ ...config, tempoEntrega: t, tempoMedio: t })
+                }
+                placeholder="ex: 30 a 50 min"
+                placeholderTextColor="#666"
                 style={{
                   backgroundColor: "#000",
                   color: "#fff",
                   padding: 12,
                   borderRadius: 8,
                   borderWidth: 1,
-                  borderColor: "#333",
-                  marginBottom: 12,
+                  borderColor: "#D4AF37",
+                  marginBottom: 16,
                 }}
               />
+              <Text
+                style={{
+                  color: "#00C851",
+                  fontSize: 12,
+                  marginBottom: 4,
+                  fontWeight: "900",
+                }}
+              >
+                ⏱️ TEMPO RETIRADA (cliente vê no checkout)
+              </Text>
+              <TextInput
+                value={config.tempoRetirada}
+                onChangeText={(t) => setConfig({ ...config, tempoRetirada: t })}
+                placeholder="ex: 10 a 20 min"
+                placeholderTextColor="#666"
+                style={{
+                  backgroundColor: "#000",
+                  color: "#fff",
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: "#00C851",
+                  marginBottom: 16,
+                }}
+              />
+              <Text
+                style={{
+                  color: "#666",
+                  fontSize: 10,
+                  marginBottom: 12,
+                  fontStyle: "italic",
+                }}
+              >
+                Dica: Mude aqui e todos os celulares dos clientes atualizam na
+                hora. O checkout vai obedecer o que está aqui.
+              </Text>
               <TouchableOpacity
                 onPress={salvarConfig}
                 style={{
                   backgroundColor: "#D4AF37",
-                  padding: 14,
+                  padding: 16,
                   borderRadius: 10,
                   alignItems: "center",
                   marginTop: 10,
                 }}
               >
-                <Text style={{ fontWeight: "900" }}>SALVAR CONFIG</Text>
+                <Text style={{ fontWeight: "900", fontSize: 14 }}>
+                  💾 SALVAR - TODO SITE VAI OBEDECER
+                </Text>
               </TouchableOpacity>
             </View>
           )}
