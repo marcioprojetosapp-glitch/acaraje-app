@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useCarrinho } from "@/src/context/CarrinhoContext";
 import { db } from "@/src/lib/firebase";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   addDoc,
@@ -32,7 +33,6 @@ export default function Checkout() {
   const [trocoPara, setTrocoPara] = useState("");
   const [config, setConfig] = useState({ taxaEntrega: 8 });
 
-  // PEGA OS VALORES QUE VEM DO CARRINHO.TSX
   const subtotalParam = Number(params.subtotal) || totalContext || 0;
   const taxaParam = Number(params.taxa) || 0;
   const totalParam = Number(params.total) || subtotalParam + taxaParam;
@@ -81,8 +81,7 @@ export default function Checkout() {
       total: totalFinal.toFixed(2),
       subtotal: subtotal.toFixed(2),
       taxaEntrega: frete,
-      itens:
-        carrinho.length > 0 ? carrinho : [{ nome: resumoParam || "Pedido" }],
+      itens: carrinho.length > 0 ? carrinho : [{ nome: resumoParam }],
       resumo: resumoParam,
       resumoDetalhado: resumoParam,
       status:
@@ -99,10 +98,7 @@ export default function Checkout() {
     try {
       if (formaPagamento === "DINHEIRO") {
         await addDoc(collection(db, "pedidos"), pedido);
-        Alert.alert(
-          "✅ Pedido enviado!",
-          isRetirada ? "Vamos confirmar!" : "Vamos levar seu troco!",
-        );
+        Alert.alert("✅ Pedido enviado!", "Vamos confirmar seu pagamento!");
         router.replace("/");
       } else {
         router.push(
@@ -118,17 +114,29 @@ export default function Checkout() {
     <ScrollView
       style={{ flex: 1, backgroundColor: "#000", padding: 14, paddingTop: 50 }}
     >
-      <Text
-        style={{
-          color: "#D4AF37",
-          fontSize: 24,
-          fontWeight: "900",
-          textAlign: "center",
-          marginBottom: 14,
-        }}
+      {/* HEADER COM SETA */}
+      <View
+        style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}
       >
-        Confira
-      </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ backgroundColor: "#1E1E1E", padding: 10, borderRadius: 20 }}
+        >
+          <Ionicons name="arrow-back" size={26} color="#D4AF37" />
+        </TouchableOpacity>
+        <Text
+          style={{
+            color: "#D4AF37",
+            fontSize: 24,
+            fontWeight: "900",
+            flex: 1,
+            textAlign: "center",
+            marginRight: 46,
+          }}
+        >
+          Confira
+        </Text>
+      </View>
 
       <View
         style={{
@@ -140,11 +148,19 @@ export default function Checkout() {
           borderColor: "#333",
         }}
       >
-        <Text style={{ color: "#D4AF37", fontWeight: "900" }}>TOTAL</Text>
-        <Text style={{ color: "#fff", marginTop: 4 }}>
+        <Text style={{ color: "#D4AF37", fontWeight: "900", fontSize: 14 }}>
+          TOTAL
+        </Text>
+        <Text style={{ color: "#fff", marginTop: 4, fontSize: 14 }}>
           Subtotal: R$ {subtotal.toFixed(2).replace(".", ",")}
         </Text>
-        <Text style={{ color: frete === 0 ? "#00FF7F" : "#aaa", marginTop: 2 }}>
+        <Text
+          style={{
+            color: frete === 0 ? "#00FF7F" : "#aaa",
+            marginTop: 2,
+            fontSize: 13,
+          }}
+        >
           Frete ({tempoParam || (isRetirada ? "retirada" : "entrega")}):{" "}
           {frete === 0 ? "GRÁTIS" : `R$ ${frete.toFixed(2).replace(".", ",")}`}
         </Text>
@@ -152,16 +168,46 @@ export default function Checkout() {
           style={{
             color: "#D4AF37",
             fontWeight: "900",
-            fontSize: 20,
+            fontSize: 22,
             marginTop: 8,
           }}
         >
           TOTAL: R$ {totalFinal.toFixed(2).replace(".", ",")}
         </Text>
+
+        {/* PRODUTOS COM COR FORTE */}
         {resumoParam ? (
-          <Text style={{ color: "#888", fontSize: 12, marginTop: 8 }}>
-            {resumoParam}
-          </Text>
+          <View
+            style={{
+              marginTop: 12,
+              backgroundColor: "#000",
+              padding: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: "#D4AF37",
+            }}
+          >
+            <Text
+              style={{
+                color: "#D4AF37",
+                fontSize: 11,
+                fontWeight: "900",
+                marginBottom: 6,
+              }}
+            >
+              SEU PEDIDO:
+            </Text>
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: 14,
+                fontWeight: "800",
+                lineHeight: 20,
+              }}
+            >
+              {resumoParam}
+            </Text>
+          </View>
         ) : null}
       </View>
 
@@ -197,7 +243,7 @@ export default function Checkout() {
         }}
       />
 
-      {!isRetirada && (
+      {!isRetirada ? (
         <TextInput
           placeholder="Endereço completo"
           placeholderTextColor="#777"
@@ -215,6 +261,21 @@ export default function Checkout() {
           }}
           multiline
         />
+      ) : (
+        <View
+          style={{
+            backgroundColor: "#0a1f0a",
+            borderWidth: 1,
+            borderColor: "#00C851",
+            padding: 14,
+            borderRadius: 14,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: "#00FF7F", fontWeight: "900" }}>
+            📍 Retirada em Santo Amaro
+          </Text>
+        </View>
       )}
 
       <Text
