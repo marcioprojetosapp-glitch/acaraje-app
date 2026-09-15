@@ -20,7 +20,7 @@ type Produto = {
   preco: number;
   descricao: string;
   imagemURL: string;
-  categoria?: string; // <- coloquei ? pq pode não existir
+  categoria?: string;
   estoque: number;
 };
 
@@ -44,7 +44,6 @@ export default function Catalogo() {
     setProdutos(lista);
   }
 
-  // CORREÇÃO AQUI: (p.categoria || "") evita o erro se categoria for undefined
   const produtosFiltrados =
     filtro === "TODOS"
       ? produtos
@@ -96,9 +95,8 @@ export default function Catalogo() {
         data={produtosFiltrados}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        contentContainerStyle={{ padding: 12, paddingBottom: 80 }}
+        contentContainerStyle={{ padding: 8, paddingBottom: 80 }}
         ListEmptyComponent={() => (
-          // <- AVISO SE NÃO TIVER PRODUTO NA CATEGORIA
           <Text style={{ color: "#888", textAlign: "center", marginTop: 40 }}>
             Nenhum produto encontrado nesta categoria
           </Text>
@@ -109,7 +107,23 @@ export default function Catalogo() {
             onPress={() => irParaDetalhe(item.id)}
             activeOpacity={0.8}
           >
-            <Image source={{ uri: item.imagemURL }} style={styles.imagem} />
+            {/* IMAGEM GRANDE - PRIORIDADE */}
+            {item.imagemURL ? (
+              <Image
+                source={{ uri: item.imagemURL }}
+                style={styles.imagem}
+                resizeMode="cover"
+              />
+            ) : (
+              <View
+                style={[
+                  styles.imagem,
+                  { justifyContent: "center", alignItems: "center" },
+                ]}
+              >
+                <Text style={{ fontSize: 40 }}>🍽️</Text>
+              </View>
+            )}
             <View style={styles.info}>
               <Text style={styles.nome} numberOfLines={2}>
                 {item.nome}
@@ -177,40 +191,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#333",
   },
-  btnFiltroAtivo: { backgroundColor: "#D4AF37" },
-  txtFiltro: { color: "#888", fontWeight: "bold" },
+  btnFiltroAtivo: { backgroundColor: "#D4AF37", borderColor: "#D4AF37" },
+  txtFiltro: { color: "#FFFFFF", fontWeight: "bold" },
   txtFiltroAtivo: { color: "#000" },
   card: {
     flex: 1,
     backgroundColor: "#1a1a1a",
-    borderRadius: 12,
+    borderRadius: 16,
     margin: 6,
     borderWidth: 1.5,
     borderColor: "#D4AF37",
     overflow: "hidden",
-    paddingBottom: 8,
+    paddingBottom: 10,
   },
   imagem: {
     width: "100%",
-    height: 110,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    margin: 8,
-    alignSelf: "center",
+    height: 190,
+    backgroundColor: "#222",
   },
-  info: { paddingHorizontal: 10, paddingBottom: 8 },
+  info: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8 },
   nome: {
     color: "#fff",
-    fontSize: 14,
-    fontWeight: "bold",
+    fontSize: 13,
+    fontWeight: "900",
     marginBottom: 4,
     textTransform: "uppercase",
+    minHeight: 32,
   },
   preco: {
     color: "#D4AF37",
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "900",
     marginBottom: 2,
   },
   estoque: { color: "#888", fontSize: 11, marginBottom: 6 },
@@ -221,8 +235,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginHorizontal: 8,
-    paddingVertical: 9,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
-  btnDetalheTxt: { color: "#000", fontWeight: "bold", fontSize: 13 },
+  btnDetalheTxt: { color: "#000", fontWeight: "900", fontSize: 13 },
 });
