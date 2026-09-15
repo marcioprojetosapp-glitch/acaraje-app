@@ -37,12 +37,14 @@ export default function Pagamento() {
         if (!snap.exists()) return;
         const data = snap.data();
         setPedido(data);
-        if (data?.statusPagamento === "approved" || data?.status === "pago") {
-          // BAIXA ESTOQUE AUTOMÁTICO SÓ QUANDO PAGAR DE VERDADE
+        if (
+          (data?.statusPagamento === "approved" || data?.status === "pago") &&
+          !data?.estoqueBaixado
+        ) {
           try {
             const itens = data?.itens || [];
             for (const item of itens) {
-              const idProduto = item.id;
+              const idProduto = item.id || item.itemId || item.produtoId;
               if (!idProduto) continue;
               const ref = doc(db, "produtos", idProduto);
               const prodSnap = await getDoc(ref);
@@ -53,9 +55,22 @@ export default function Pagamento() {
                 await updateDoc(ref, { estoque: novo, disponivel: novo > 0 });
               }
             }
+            // TRAVA PRA NÃO BAIXAR 2 VEZES
+            await updateDoc(doc(db, "pedidos", pedidoId as string), {
+              estoqueBaixado: true,
+              estoqueBaixadoEm: new Date(),
+            });
           } catch (e) {
             console.log("Erro baixa estoque", e);
           }
+          limparCarrinho();
+          router.replace("/sucesso");
+        }
+        // Se já foi baixado, só vai pro sucesso
+        if (
+          (data?.statusPagamento === "approved" || data?.status === "pago") &&
+          data?.estoqueBaixado
+        ) {
           limparCarrinho();
           router.replace("/sucesso");
         }
