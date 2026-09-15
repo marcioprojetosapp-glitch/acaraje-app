@@ -24,24 +24,30 @@ import {
 } from "react-native";
 
 export default function Checkout() {
-  const { resumo, subtotal, taxa, total, tipo } = useLocalSearchParams<{
+  const { resumo, subtotal, taxa, total, tipo, tempo } = useLocalSearchParams<{
     resumo: string;
     subtotal: string;
     taxa: string;
     total: string;
     tipo: "entrega" | "retirada";
+    tempo: string;
   }>();
   const router = useRouter();
   const { carrinho } = useCarrinho();
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [endereco, setEndereco] = useState("");
-  const [aceitaPromo, setAceitaPromo] = useState(true); // LGPD - padrão SIM
+  const [aceitaPromo, setAceitaPromo] = useState(true);
   const [loading, setLoading] = useState(false);
   const ehRetirada = tipo === "retirada";
   const subtotalNum = Number(subtotal || 0);
   const freteNum = Number(taxa || 0);
   const totalNum = Number(total || 0);
+  const tempoTxt = tempo
+    ? decodeURIComponent(tempo as string)
+    : ehRetirada
+      ? "12 a 25 min"
+      : "10 a 26 min";
 
   const enviar = async () => {
     if (!nome.trim() || !whatsapp.trim() || (!ehRetirada && !endereco.trim())) {
@@ -83,7 +89,6 @@ export default function Checkout() {
         })
         .join("\n\n");
 
-      // 1. Cria o pedido
       const docRef = await addDoc(collection(db, "pedidos"), {
         nome: nome.trim(),
         whatsapp: whatsapp.trim(),
@@ -99,6 +104,7 @@ export default function Checkout() {
         total: totalNum,
         totalFormatado: totalNum.toFixed(2).replace(".", ","),
         tipoEntrega: tipo || "entrega",
+        tempoEstimado: tempoTxt,
         formaPagamento: "MERCADO_PAGO",
         pago: false,
         status: "pendente",
@@ -108,7 +114,6 @@ export default function Checkout() {
         aceitaPromo: aceitaPromo,
       });
 
-      // 2. SALVA NA LISTA DE CLIENTES (COM AUTORIZAÇÃO LGPD)
       const whatsappLimpo = whatsapp.trim().replace(/\D/g, "");
       if (aceitaPromo && whatsappLimpo.length >= 10) {
         try {
@@ -164,8 +169,8 @@ export default function Checkout() {
           >
             <Text style={styles.badgeTxt}>
               {ehRetirada
-                ? "🏃 RETIRADA - GRÁTIS"
-                : `🛵 ENTREGA - R$ ${freteNum.toFixed(2).replace(".", ",")}`}
+                ? `🏃 RETIRADA - GRÁTIS - ${tempoTxt}`
+                : `🛵 ENTREGA - R$ ${freteNum.toFixed(2).replace(".", ",")} - ${tempoTxt}`}
             </Text>
           </View>
           <View style={styles.card}>
@@ -181,7 +186,7 @@ export default function Checkout() {
               </Text>
             </View>
             <View style={styles.linha}>
-              <Text style={styles.lb}>Frete</Text>
+              <Text style={styles.lb}>Frete ({tempoTxt})</Text>
               <Text style={[styles.vl, ehRetirada && { color: "#00C851" }]}>
                 {ehRetirada
                   ? "GRÁTIS"
@@ -224,11 +229,12 @@ export default function Checkout() {
             />
           ) : (
             <View style={styles.avisoVerde}>
-              <Text style={styles.avisoTxt}>📍 Retirada em Santo Amaro</Text>
+              <Text style={styles.avisoTxt}>
+                📍 Retirada em Santo Amaro - {tempoTxt}
+              </Text>
             </View>
           )}
 
-          {/* CHECKBOX LGPD - AUTORIZAÇÃO */}
           <TouchableOpacity
             style={styles.checkContainer}
             onPress={() => setAceitaPromo(!aceitaPromo)}
