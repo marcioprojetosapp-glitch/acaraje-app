@@ -13,6 +13,7 @@ import {
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -32,6 +33,7 @@ export default function Checkout() {
   const [formaPagamento, setFormaPagamento] = useState("PIX");
   const [trocoPara, setTrocoPara] = useState("");
   const [config, setConfig] = useState({ taxaEntrega: 8 });
+  const [erros, setErros] = useState({ nome: false, zap: false, end: false });
 
   const subtotalParam = Number(params.subtotal) || totalContext || 0;
   const taxaParam = Number(params.taxa) || 0;
@@ -54,18 +56,36 @@ export default function Checkout() {
   const frete = isRetirada ? 0 : taxaParam || Number(config.taxaEntrega || 8);
   const subtotal = subtotalParam;
   const totalFinal = isRetirada ? subtotal : totalParam;
-
   const valorTrocoPara =
     Number(String(trocoPara).replace(",", ".").replace("R$", "")) || 0;
   const troco = valorTrocoPara - totalFinal;
 
+  const mostrarAlerta = (titulo, msg) => {
+    if (Platform.OS === "web") {
+      // @ts-ignore
+      window.alert(`${titulo}\n\n${msg}`);
+    } else {
+      Alert.alert(titulo, msg);
+    }
+  };
+
   const finalizar = async () => {
-    if (!nome || !whatsapp || (!isRetirada && !endereco)) {
-      Alert.alert("Falta info", "Preencha nome, WhatsApp e endereço");
+    const e = {
+      nome: !nome.trim(),
+      zap: !whatsapp.trim() || whatsapp.replace(/\D/g, "").length < 10,
+      end: !isRetirada && !endereco.trim(),
+    };
+    setErros(e);
+
+    if (e.nome || e.zap || e.end) {
+      mostrarAlerta(
+        "⚠️ PREENCHA SEUS DADOS",
+        `${e.nome ? "• Nome completo\n" : ""}${e.zap ? "• WhatsApp válido\n" : ""}${e.end ? "• Endereço completo" : ""}`,
+      );
       return;
     }
     if (formaPagamento === "DINHEIRO" && !trocoPara) {
-      Alert.alert("Troco", "Digite para quanto precisa de troco");
+      mostrarAlerta("Troco", "Digite para quanto precisa de troco, ex: 50");
       return;
     }
 
@@ -98,15 +118,15 @@ export default function Checkout() {
     try {
       if (formaPagamento === "DINHEIRO") {
         await addDoc(collection(db, "pedidos"), pedido);
-        Alert.alert("✅ Pedido enviado!", "Vamos confirmar seu pagamento!");
+        mostrarAlerta("✅ Pedido enviado!", "Vamos confirmar seu pagamento!");
         router.replace("/");
       } else {
         router.push(
           `/pagamento?dados=${encodeURIComponent(JSON.stringify(pedido))}`,
         );
       }
-    } catch (e) {
-      Alert.alert("Erro", e.message);
+    } catch (err) {
+      mostrarAlerta("Erro", err.message);
     }
   };
 
@@ -114,7 +134,6 @@ export default function Checkout() {
     <ScrollView
       style={{ flex: 1, backgroundColor: "#000", padding: 14, paddingTop: 50 }}
     >
-      {/* HEADER COM SETA */}
       <View
         style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}
       >
@@ -151,16 +170,10 @@ export default function Checkout() {
         <Text style={{ color: "#D4AF37", fontWeight: "900", fontSize: 14 }}>
           TOTAL
         </Text>
-        <Text style={{ color: "#fff", marginTop: 4, fontSize: 14 }}>
+        <Text style={{ color: "#fff", marginTop: 4 }}>
           Subtotal: R$ {subtotal.toFixed(2).replace(".", ",")}
         </Text>
-        <Text
-          style={{
-            color: frete === 0 ? "#00FF7F" : "#aaa",
-            marginTop: 2,
-            fontSize: 13,
-          }}
-        >
+        <Text style={{ color: frete === 0 ? "#00FF7F" : "#aaa", marginTop: 2 }}>
           Frete ({tempoParam || (isRetirada ? "retirada" : "entrega")}):{" "}
           {frete === 0 ? "GRÁTIS" : `R$ ${frete.toFixed(2).replace(".", ",")}`}
         </Text>
@@ -174,8 +187,6 @@ export default function Checkout() {
         >
           TOTAL: R$ {totalFinal.toFixed(2).replace(".", ",")}
         </Text>
-
-        {/* PRODUTOS COM COR FORTE */}
         {resumoParam ? (
           <View
             style={{
@@ -212,70 +223,103 @@ export default function Checkout() {
       </View>
 
       <TextInput
-        placeholder="Seu nome completo"
+        placeholder="Seu nome completo *"
         placeholderTextColor="#777"
         value={nome}
-        onChangeText={setNome}
+        onChangeText={(t) => {
+          setNome(t);
+          setErros((p) => ({ ...p, nome: false }));
+        }}
         style={{
           backgroundColor: "#1E1E1E",
           color: "#fff",
           padding: 16,
           borderRadius: 14,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: "#333",
+          marginBottom: 6,
+          borderWidth: 2,
+          borderColor: erros.nome ? "#ff3333" : "#333",
         }}
       />
+      {erros.nome && (
+        <Text
+          style={{
+            color: "#ff3333",
+            fontSize: 12,
+            marginBottom: 10,
+            marginLeft: 4,
+          }}
+        >
+          ⚠️ Digite seu nome
+        </Text>
+      )}
+
       <TextInput
-        placeholder="WhatsApp"
+        placeholder="WhatsApp * (com DDD)"
         placeholderTextColor="#777"
         value={whatsapp}
-        onChangeText={setWhatsapp}
+        onChangeText={(t) => {
+          setWhatsapp(t);
+          setErros((p) => ({ ...p, zap: false }));
+        }}
         keyboardType="phone-pad"
         style={{
           backgroundColor: "#1E1E1E",
           color: "#fff",
           padding: 16,
           borderRadius: 14,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: "#333",
+          marginBottom: 6,
+          borderWidth: 2,
+          borderColor: erros.zap ? "#ff3333" : "#333",
         }}
       />
-
-      {!isRetirada ? (
-        <TextInput
-          placeholder="Endereço completo"
-          placeholderTextColor="#777"
-          value={endereco}
-          onChangeText={setEndereco}
+      {erros.zap && (
+        <Text
           style={{
-            backgroundColor: "#1E1E1E",
-            color: "#fff",
-            padding: 16,
-            borderRadius: 14,
-            marginBottom: 12,
-            height: 80,
-            borderWidth: 1,
-            borderColor: "#333",
-          }}
-          multiline
-        />
-      ) : (
-        <View
-          style={{
-            backgroundColor: "#0a1f0a",
-            borderWidth: 1,
-            borderColor: "#00C851",
-            padding: 14,
-            borderRadius: 14,
-            marginBottom: 12,
+            color: "#ff3333",
+            fontSize: 12,
+            marginBottom: 10,
+            marginLeft: 4,
           }}
         >
-          <Text style={{ color: "#00FF7F", fontWeight: "900" }}>
-            📍 Retirada em Santo Amaro
-          </Text>
-        </View>
+          ⚠️ WhatsApp obrigatório
+        </Text>
+      )}
+
+      {!isRetirada && (
+        <>
+          <TextInput
+            placeholder="Endereço completo * - Rua, Nº, Bairro"
+            placeholderTextColor="#777"
+            value={endereco}
+            onChangeText={(t) => {
+              setEndereco(t);
+              setErros((p) => ({ ...p, end: false }));
+            }}
+            style={{
+              backgroundColor: "#1E1E1E",
+              color: "#fff",
+              padding: 16,
+              borderRadius: 14,
+              marginBottom: 6,
+              height: 80,
+              borderWidth: 2,
+              borderColor: erros.end ? "#ff3333" : "#333",
+            }}
+            multiline
+          />
+          {erros.end && (
+            <Text
+              style={{
+                color: "#ff3333",
+                fontSize: 12,
+                marginBottom: 10,
+                marginLeft: 4,
+              }}
+            >
+              ⚠️ Endereço obrigatório para entrega
+            </Text>
+          )}
+        </>
       )}
 
       <Text
@@ -373,7 +417,7 @@ export default function Checkout() {
               fontWeight: "700",
             }}
           >
-            Troco para quanto?
+            Troco para quanto? *
           </Text>
           <TextInput
             placeholder="Ex: 50, 100"
