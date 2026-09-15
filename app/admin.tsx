@@ -271,7 +271,6 @@ export default function Admin() {
 
   useEffect(() => {
     if (!autorizado || pedidos.length === 0) return;
-    // AUTO IMPRESSÃO PARA PAGOS E DINHEIRO CONFIRMADO
     pedidos.forEach((p) => {
       const isPagoAuto =
         p.pago === true ||
@@ -290,7 +289,6 @@ export default function Admin() {
         updateDoc(doc(db, "pedidos", p.id), { impresso: true }).catch(() => {});
       }
     });
-    // ALERTA BIP PARA DINHEIRO
     pedidos.forEach((p) => {
       if (
         p.formaPagamento === "DINHEIRO" &&
@@ -876,6 +874,8 @@ export default function Admin() {
           >
             ADMIN - ACARAJÉ DA BENÇÃO
           </Text>
+
+          {/* ABAS CORRIGIDAS - CONTRASTE FORTE */}
           <View
             style={{
               flexDirection: "row",
@@ -890,11 +890,19 @@ export default function Admin() {
                 flex: 1,
                 padding: 11,
                 borderRadius: 10,
-                backgroundColor: aba === "pedidos" ? "#D4AF37" : "#222",
+                backgroundColor: aba === "pedidos" ? "#D4AF37" : "#1E1E1E",
+                borderWidth: 2,
+                borderColor: aba === "pedidos" ? "#D4AF37" : "#666",
                 alignItems: "center",
               }}
             >
-              <Text style={{ fontWeight: "900", fontSize: 10 }}>
+              <Text
+                style={{
+                  fontWeight: "900",
+                  fontSize: 10,
+                  color: aba === "pedidos" ? "#000" : "#FFFFFF",
+                }}
+              >
                 PEDIDOS ({pedidos.length})
               </Text>
             </TouchableOpacity>
@@ -904,11 +912,21 @@ export default function Admin() {
                 flex: 1,
                 padding: 11,
                 borderRadius: 10,
-                backgroundColor: aba === "produtos" ? "#D4AF37" : "#222",
+                backgroundColor: aba === "produtos" ? "#D4AF37" : "#1E1E1E",
+                borderWidth: 2,
+                borderColor: aba === "produtos" ? "#D4AF37" : "#666",
                 alignItems: "center",
               }}
             >
-              <Text style={{ fontWeight: "900", fontSize: 10 }}>PRODUTOS</Text>
+              <Text
+                style={{
+                  fontWeight: "900",
+                  fontSize: 10,
+                  color: aba === "produtos" ? "#000" : "#FFFFFF",
+                }}
+              >
+                PRODUTOS
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setAba("config")}
@@ -916,11 +934,21 @@ export default function Admin() {
                 flex: 1,
                 padding: 11,
                 borderRadius: 10,
-                backgroundColor: aba === "config" ? "#D4AF37" : "#222",
+                backgroundColor: aba === "config" ? "#D4AF37" : "#1E1E1E",
+                borderWidth: 2,
+                borderColor: aba === "config" ? "#D4AF37" : "#666",
                 alignItems: "center",
               }}
             >
-              <Text style={{ fontWeight: "900", fontSize: 10 }}>CONFIG</Text>
+              <Text
+                style={{
+                  fontWeight: "900",
+                  fontSize: 10,
+                  color: aba === "config" ? "#000" : "#FFFFFF",
+                }}
+              >
+                CONFIG
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -947,6 +975,8 @@ export default function Admin() {
                             ? "#00C851"
                             : "#D4AF37"
                           : "#222",
+                      borderWidth: filtro === f.id ? 0 : 1,
+                      borderColor: "#555",
                       alignItems: "center",
                     }}
                   >
