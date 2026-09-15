@@ -22,16 +22,18 @@ export default function Carrinho() {
 
   const [tipo, setTipo] = useState<TipoEntrega>("entrega");
   const [taxaEntrega, setTaxaEntrega] = useState(8);
-  const [tempoMedio, setTempoMedio] = useState("40-60 min");
+  const [tempoEntrega, setTempoEntrega] = useState("10 a 26 min");
+  const [tempoRetirada, setTempoRetirada] = useState("12 a 25 min");
   const [aberto, setAberto] = useState(true);
 
-  // LÊ AO VIVO DO FIREBASE QUE VOCÊ CRIOU
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
       if (snap.exists()) {
         const d = snap.data();
         setTaxaEntrega(d.taxaEntrega ?? 8);
-        setTempoMedio(d.tempoMedio ?? "40-60 min");
+        // lê os 2 tempos novos + compatível com antigo
+        setTempoEntrega(d.tempoEntrega ?? d.tempoMedio ?? "10 a 26 min");
+        setTempoRetirada(d.tempoRetirada ?? "12 a 25 min");
         setAberto(d.aberto ?? true);
       }
     });
@@ -43,6 +45,7 @@ export default function Carrinho() {
 
   const frete = tipo === "retirada" ? 0 : taxaEntrega;
   const totalFinal = total + frete;
+  const tempoMostrado = tipo === "retirada" ? tempoRetirada : tempoEntrega;
 
   const handleFinalizar = () => {
     if (!aberto) {
@@ -58,9 +61,8 @@ export default function Carrinho() {
       })
       .join("\n\n");
 
-    // AGORA MANDA AS 2 OPÇÕES PARA O CHECKOUT
     router.push(
-      `/checkout?resumo=${encodeURIComponent(textoDoCarrinho)}&subtotal=${total}&taxa=${frete}&total=${totalFinal}&tipo=${tipo}`,
+      `/checkout?resumo=${encodeURIComponent(textoDoCarrinho)}&subtotal=${total}&taxa=${frete}&total=${totalFinal}&tipo=${tipo}&tempo=${encodeURIComponent(tempoMostrado)}`,
     );
   };
 
@@ -116,7 +118,7 @@ export default function Carrinho() {
                 <Text style={styles.tipoSub}>
                   R$ {taxaEntrega.toFixed(2).replace(".", ",")}
                 </Text>
-                <Text style={styles.tipoTempo}>{tempoMedio}</Text>
+                <Text style={styles.tipoTempo}>{tempoEntrega}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -135,7 +137,7 @@ export default function Carrinho() {
                   🏃 RETIRADA
                 </Text>
                 <Text style={styles.tipoSub}>GRÁTIS</Text>
-                <Text style={styles.tipoTempo}>{tempoMedio}</Text>
+                <Text style={styles.tipoTempo}>{tempoRetirada}</Text>
               </TouchableOpacity>
             </View>
 
@@ -205,7 +207,9 @@ export default function Carrinho() {
             </Text>
           </View>
           <View style={styles.linhaTotal}>
-            <Text style={styles.totalLabel}>Frete ({tipo})</Text>
+            <Text style={styles.totalLabel}>
+              Frete ({tipo}) - {tempoMostrado}
+            </Text>
             <Text style={styles.totalLabel}>
               {frete === 0
                 ? "GRÁTIS"
