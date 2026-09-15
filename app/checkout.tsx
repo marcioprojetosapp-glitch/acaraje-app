@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { useCarrinho } from "@/src/context/CarrinhoContext";
+import { db } from "@/src/lib/firebase";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   addDoc,
@@ -16,11 +18,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { db } from "../src/lib/firebase";
 
 export default function Checkout() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { carrinho, total: totalContext } = useCarrinho();
 
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -28,64 +30,33 @@ export default function Checkout() {
   const [tipoEntrega, setTipoEntrega] = useState("entrega");
   const [formaPagamento, setFormaPagamento] = useState("PIX");
   const [trocoPara, setTrocoPara] = useState("");
-  const [config, setConfig] = useState({
-    taxaEntrega: 8,
-    tempoEntrega: "11a 24min",
-    tempoRetirada: "11a 24min",
-  });
-  const [carrinho, setCarrinho] = useState([]);
-  const [total, setTotal] = useState(0);
+  const [config, setConfig] = useState({ taxaEntrega: 8 });
+
+  // PEGA OS VALORES QUE VEM DO CARRINHO.TSX
+  const subtotalParam = Number(params.subtotal) || totalContext || 0;
+  const taxaParam = Number(params.taxa) || 0;
+  const totalParam = Number(params.total) || subtotalParam + taxaParam;
+  const resumoParam = params.resumo
+    ? decodeURIComponent(params.resumo as string)
+    : "";
+  const tempoParam = params.tempo
+    ? decodeURIComponent(params.tempo as string)
+    : "";
 
   useEffect(() => {
-    // Config da loja
-    getDoc(doc(db, "config", "loja"))
-      .then((s) => {
-        if (s.exists()) setConfig(s.data());
-      })
-      .catch(() => {});
-
-    // CARREGA CARRINHO - FUNCIONA NO VERCEL E NO APP
-    try {
-      let raw = params.carrinho as string;
-
-      // Se não veio por params (bug do Vercel), tenta localStorage
-      if (!raw && typeof window !== "undefined") {
-        raw =
-          localStorage.getItem("carrinho") ||
-          localStorage.getItem("carrinho_acaraje") ||
-          localStorage.getItem("@acaraje:carrinho") ||
-          localStorage.getItem("acareje-cart") ||
-          "";
-      }
-
-      if (raw) {
-        const c = JSON.parse(raw);
-        if (Array.isArray(c) && c.length > 0) {
-          setCarrinho(c);
-          const tot = c.reduce(
-            (a, b) =>
-              a +
-              Number(b.preco || b.valor || 0) *
-                Number(b.qtd || b.quantidade || 1),
-            0,
-          );
-          setTotal(tot);
-        }
-      }
-    } catch (e) {
-      console.log("erro carrinho", e);
-    }
-
+    getDoc(doc(db, "config", "loja")).then((s) => {
+      if (s.exists()) setConfig(s.data());
+    });
     if (params.tipo) setTipoEntrega(params.tipo as string);
   }, []);
 
   const isRetirada = tipoEntrega === "retirada";
-  const frete = isRetirada ? 0 : Number(config.taxaEntrega || 8);
-  const totalFinal = total + frete;
+  const frete = isRetirada ? 0 : taxaParam || Number(config.taxaEntrega || 8);
+  const subtotal = subtotalParam;
+  const totalFinal = isRetirada ? subtotal : totalParam;
+
   const valorTrocoPara =
-    Number(
-      String(trocoPara).replace(",", ".").replace("R$", "").replace(" ", ""),
-    ) || 0;
+    Number(String(trocoPara).replace(",", ".").replace("R$", "")) || 0;
   const troco = valorTrocoPara - totalFinal;
 
   const finalizar = async () => {
@@ -97,17 +68,6 @@ export default function Checkout() {
       Alert.alert("Troco", "Digite para quanto precisa de troco");
       return;
     }
-    if (carrinho.length === 0) {
-      Alert.alert("Carrinho vazio", "Volte e adicione itens");
-      return;
-    }
-
-    const resumoDetalhado = carrinho
-      .map(
-        (i) =>
-          `${i.qtd || i.quantidade}x ${i.nome} ${i.obs ? `(${i.obs})` : ""}`,
-      )
-      .join("\n");
 
     const pedido = {
       nome,
@@ -119,11 +79,12 @@ export default function Checkout() {
       trocoPara: formaPagamento === "DINHEIRO" ? trocoPara : null,
       troco: formaPagamento === "DINHEIRO" && troco > 0 ? troco : 0,
       total: totalFinal.toFixed(2),
-      subtotal: total.toFixed(2),
+      subtotal: subtotal.toFixed(2),
       taxaEntrega: frete,
-      itens: carrinho,
-      resumo: resumoDetalhado,
-      resumoDetalhado,
+      itens:
+        carrinho.length > 0 ? carrinho : [{ nome: resumoParam || "Pedido" }],
+      resumo: resumoParam,
+      resumoDetalhado: resumoParam,
       status:
         formaPagamento === "DINHEIRO"
           ? "aguardando_confirmacao"
@@ -140,15 +101,13 @@ export default function Checkout() {
         await addDoc(collection(db, "pedidos"), pedido);
         Alert.alert(
           "✅ Pedido enviado!",
-          isRetirada
-            ? "Vamos confirmar seu dinheiro e já vai pra cozinha!"
-            : "Vamos confirmar e levar seu troco!",
+          isRetirada ? "Vamos confirmar!" : "Vamos levar seu troco!",
         );
-        if (typeof window !== "undefined") localStorage.removeItem("carrinho");
         router.replace("/");
       } else {
-        const paramsPedido = encodeURIComponent(JSON.stringify(pedido));
-        router.push(`/pagamento?dados=${paramsPedido}`);
+        router.push(
+          `/pagamento?dados=${encodeURIComponent(JSON.stringify(pedido))}`,
+        );
       }
     } catch (e) {
       Alert.alert("Erro", e.message);
@@ -168,7 +127,7 @@ export default function Checkout() {
           marginBottom: 14,
         }}
       >
-        Checkout
+        Confira
       </Text>
 
       <View
@@ -181,15 +140,13 @@ export default function Checkout() {
           borderColor: "#333",
         }}
       >
-        <Text style={{ color: "#D4AF37", fontWeight: "900", fontSize: 14 }}>
-          TOTAL
-        </Text>
+        <Text style={{ color: "#D4AF37", fontWeight: "900" }}>TOTAL</Text>
         <Text style={{ color: "#fff", marginTop: 4 }}>
-          Subtotal: R$ {total.toFixed(2)}
+          Subtotal: R$ {subtotal.toFixed(2).replace(".", ",")}
         </Text>
         <Text style={{ color: frete === 0 ? "#00FF7F" : "#aaa", marginTop: 2 }}>
-          Frete ({isRetirada ? config.tempoRetirada : config.tempoEntrega}):{" "}
-          {frete === 0 ? "GRÁTIS" : `R$ ${frete.toFixed(2)}`}
+          Frete ({tempoParam || (isRetirada ? "retirada" : "entrega")}):{" "}
+          {frete === 0 ? "GRÁTIS" : `R$ ${frete.toFixed(2).replace(".", ",")}`}
         </Text>
         <Text
           style={{
@@ -199,8 +156,13 @@ export default function Checkout() {
             marginTop: 8,
           }}
         >
-          TOTAL: R$ {totalFinal.toFixed(2)}
+          TOTAL: R$ {totalFinal.toFixed(2).replace(".", ",")}
         </Text>
+        {resumoParam ? (
+          <Text style={{ color: "#888", fontSize: 12, marginTop: 8 }}>
+            {resumoParam}
+          </Text>
+        ) : null}
       </View>
 
       <TextInput
@@ -235,7 +197,7 @@ export default function Checkout() {
         }}
       />
 
-      {!isRetirada ? (
+      {!isRetirada && (
         <TextInput
           placeholder="Endereço completo"
           placeholderTextColor="#777"
@@ -253,21 +215,6 @@ export default function Checkout() {
           }}
           multiline
         />
-      ) : (
-        <View
-          style={{
-            backgroundColor: "#0a1f0a",
-            borderWidth: 1,
-            borderColor: "#00C851",
-            padding: 14,
-            borderRadius: 14,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: "#00FF7F", fontWeight: "900" }}>
-            📍 Retirada em Santo Amaro - {config.tempoRetirada}
-          </Text>
-        </View>
       )}
 
       <Text
@@ -378,18 +325,11 @@ export default function Checkout() {
               color: "#fff",
               padding: 14,
               borderRadius: 10,
-              borderWidth: 1,
-              borderColor: "#553300",
             }}
           />
           {troco > 0 && (
             <Text style={{ color: "#00FF7F", marginTop: 8, fontWeight: "900" }}>
-              Seu troco: R$ {troco.toFixed(2)}
-            </Text>
-          )}
-          {troco < 0 && (
-            <Text style={{ color: "#ff4444", marginTop: 8 }}>
-              Valor menor que o total!
+              Seu troco: R$ {troco.toFixed(2).replace(".", ",")}
             </Text>
           )}
         </View>
