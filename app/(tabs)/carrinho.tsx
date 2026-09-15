@@ -31,7 +31,6 @@ export default function Carrinho() {
       if (snap.exists()) {
         const d = snap.data();
         setTaxaEntrega(d.taxaEntrega ?? 8);
-        // lê os 2 tempos novos + compatível com antigo
         setTempoEntrega(d.tempoEntrega ?? d.tempoMedio ?? "10 a 26 min");
         setTempoRetirada(d.tempoRetirada ?? "12 a 25 min");
         setAberto(d.aberto ?? true);
@@ -94,7 +93,7 @@ export default function Carrinho() {
       <FlatList
         data={carrinho}
         keyExtractor={(item: any, index) => `${getId(item)}-${index}`}
-        contentContainerStyle={{ padding: 16, paddingBottom: 260 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 280 }}
         ListFooterComponent={
           <View style={{ marginTop: 20 }}>
             <Text style={styles.secaoTitulo}>COMO QUER RECEBER?</Text>
@@ -199,7 +198,7 @@ export default function Carrinho() {
       />
 
       <View style={styles.footer}>
-        <View style={{ gap: 4, marginBottom: 10 }}>
+        <View style={{ gap: 4, marginBottom: 12 }}>
           <View style={styles.linhaTotal}>
             <Text style={styles.totalLabel}>Subtotal</Text>
             <Text style={styles.totalLabel}>
@@ -216,7 +215,8 @@ export default function Carrinho() {
                 : `R$ ${frete.toFixed(2).replace(".", ",")}`}
             </Text>
           </View>
-          <View style={[styles.linhaTotal, { marginTop: 6 }]}>
+          <View style={styles.linhaDivisoria} />
+          <View style={[styles.linhaTotal, { marginTop: 4 }]}>
             <Text style={styles.total}>Total:</Text>
             <Text style={styles.total}>
               R$ {totalFinal.toFixed(2).replace(".", ",")}
@@ -334,26 +334,40 @@ const styles = StyleSheet.create({
   },
   btnQtdTxt: { color: "#000", fontSize: 20, fontWeight: "bold" },
   qtd: { color: "#fff", fontSize: 17, fontWeight: "bold" },
+  // LINHA + SOMBRA - MAIS VISIVEL
   footer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "#000",
+    backgroundColor: "#0a0a0a",
     padding: 16,
     paddingBottom: 30,
-    borderTopWidth: 1,
-    borderTopColor: "#222",
+    borderTopWidth: 1.5,
+    borderTopColor: "#D4AF37",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    shadowColor: "#D4AF37",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 25,
+  },
+  linhaDivisoria: {
+    height: 1,
+    backgroundColor: "rgba(212, 175, 55, 0.25)",
+    marginTop: 10,
+    marginBottom: 2,
   },
   linhaTotal: { flexDirection: "row", justifyContent: "space-between" },
   totalLabel: { color: "#aaa", fontSize: 14 },
-  total: { color: "#fff", fontSize: 19, fontWeight: "bold" },
+  total: { color: "#fff", fontSize: 20, fontWeight: "900" },
   btnFinalizar: {
     backgroundColor: "#D4AF37",
     padding: 17,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 6,
   },
-  btnFinalizarTxt: { color: "#000", fontSize: 17, fontWeight: "bold" },
+  btnFinalizarTxt: { color: "#000", fontSize: 17, fontWeight: "900" },
 });
