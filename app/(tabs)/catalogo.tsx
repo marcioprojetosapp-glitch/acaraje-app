@@ -30,7 +30,10 @@ export default function Catalogo() {
   const router = useRouter();
   const { carrinho } = useCarrinho();
 
-  const totalItens = carrinho.reduce((acc, item) => acc + item.quantidade, 0);
+  const totalItens = carrinho.reduce(
+    (acc, item) => acc + (item.quantidade ?? 0),
+    0,
+  );
 
   useEffect(() => {
     carregarProdutos();
@@ -95,7 +98,7 @@ export default function Catalogo() {
         data={produtosFiltrados}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        contentContainerStyle={{ padding: 8, paddingBottom: 80 }}
+        contentContainerStyle={{ padding: 6, paddingBottom: 80 }}
         ListEmptyComponent={() => (
           <Text style={{ color: "#888", textAlign: "center", marginTop: 40 }}>
             Nenhum produto encontrado nesta categoria
@@ -105,9 +108,8 @@ export default function Catalogo() {
           <TouchableOpacity
             style={styles.card}
             onPress={() => irParaDetalhe(item.id)}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            {/* IMAGEM GRANDE - PRIORIDADE */}
             {item.imagemURL ? (
               <Image
                 source={{ uri: item.imagemURL }}
@@ -125,13 +127,13 @@ export default function Catalogo() {
               </View>
             )}
             <View style={styles.info}>
-              <Text style={styles.nome} numberOfLines={2}>
+              <Text style={styles.nome} numberOfLines={1}>
                 {item.nome}
               </Text>
               <Text style={styles.preco}>
                 R$ {item.preco.toFixed(2).replace(".", ",")}
               </Text>
-              <Text style={styles.estoque}>Estoque: {item.estoque}</Text>
+              <Text style={styles.estoque}>Est: {item.estoque}</Text>
             </View>
             <TouchableOpacity
               style={styles.btnDetalhe}
@@ -140,7 +142,7 @@ export default function Catalogo() {
                 irParaDetalhe(item.id);
               }}
             >
-              <Ionicons name="eye" size={16} color="#000" />
+              <Ionicons name="eye" size={12} color="#000" />
               <Text style={styles.btnDetalheTxt}>Ver Detalhes</Text>
             </TouchableOpacity>
           </TouchableOpacity>
@@ -184,7 +186,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     paddingHorizontal: 12,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   btnFiltro: {
     backgroundColor: "#222",
@@ -201,42 +203,51 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#1a1a1a",
     borderRadius: 16,
-    margin: 6,
-    borderWidth: 1.5,
+    margin: 5,
+    borderWidth: 1.2,
     borderColor: "#D4AF37",
     overflow: "hidden",
-    paddingBottom: 10,
+    paddingBottom: 6,
   },
   imagem: {
     width: "100%",
-    height: 190,
+    height: 210, // IMAGEM BEM MAIOR
     backgroundColor: "#222",
   },
-  info: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8 },
+  info: {
+    paddingHorizontal: 8,
+    paddingTop: 5,
+    paddingBottom: 2,
+  },
   nome: {
     color: "#fff",
-    fontSize: 13,
+    fontSize: 11, // COMPACTO
     fontWeight: "900",
-    marginBottom: 4,
+    marginBottom: 1,
     textTransform: "uppercase",
-    minHeight: 32,
   },
   preco: {
     color: "#D4AF37",
-    fontSize: 16,
+    fontSize: 14, // COMPACTO
     fontWeight: "900",
-    marginBottom: 2,
+    marginBottom: 0,
   },
-  estoque: { color: "#888", fontSize: 11, marginBottom: 6 },
+  estoque: {
+    color: "#888",
+    fontSize: 9, // BEM PEQUENO
+    marginBottom: 2,
+    marginTop: 1,
+  },
   btnDetalhe: {
     backgroundColor: "#D4AF37",
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 6,
-    marginHorizontal: 8,
-    paddingVertical: 10,
-    borderRadius: 10,
+    gap: 4,
+    marginHorizontal: 6,
+    marginTop: 2,
+    paddingVertical: 6, // BEM COMPACTO
+    borderRadius: 7,
   },
-  btnDetalheTxt: { color: "#000", fontWeight: "900", fontSize: 13 },
+  btnDetalheTxt: { color: "#000", fontWeight: "900", fontSize: 10 },
 });
