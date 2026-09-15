@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -90,7 +91,6 @@ export default function DetalheProduto() {
       adicionaisLista.push(`${qtdCopos} Copo(s) descartável`);
     }
 
-    // --- CORREÇÃO QUE TIRA DUPLICADO ---
     const listaUnica = [...new Set(adicionaisLista)];
     const listaOrdenada = listaUnica.sort();
 
@@ -117,31 +117,37 @@ export default function DetalheProduto() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        <TouchableOpacity
-          style={styles.btnVoltar}
-          onPress={() => router.push("/(tabs)/catalogo")}
-        >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.btnCarrinho}
-          onPress={() => router.push("/(tabs)/carrinho")}
-        >
-          <Ionicons name="cart-outline" size={24} color="#fff" />
-          {totalItens > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeTxt}>{totalItens}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.containerImagem}>
           <Image
             source={{ uri: produto.imagemURL }}
             style={styles.imagem}
             resizeMode="cover"
           />
+          <TouchableOpacity
+            style={styles.btnVoltar}
+            onPress={() => router.push("/(tabs)/catalogo")}
+          >
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btnCarrinho}
+            onPress={() => router.push("/(tabs)/carrinho")}
+          >
+            <Ionicons name="cart-outline" size={24} color="#fff" />
+            {totalItens > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeTxt}>{totalItens}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
+
         <View style={styles.info}>
           <Text style={styles.nome}>{produto.nome}</Text>
           <Text style={styles.descricao}>{produto.descricao}</Text>
@@ -149,6 +155,7 @@ export default function DetalheProduto() {
             R$ {precoUnitario.toFixed(2).replace(".", ",")} cada
           </Text>
         </View>
+
         <View style={styles.cardPersonalizar}>
           <Text style={styles.tituloPersonalizar}>Personalize seu pedido</Text>
           {ehComida && (
@@ -228,6 +235,7 @@ export default function DetalheProduto() {
             </View>
           )}
         </View>
+
         <View style={styles.quantidade}>
           <TouchableOpacity
             style={styles.btnQtd}
@@ -243,7 +251,8 @@ export default function DetalheProduto() {
             <Text style={styles.btnQtdTxt}>+</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
+
       <View style={styles.footer}>
         <TouchableOpacity style={styles.btnAdicionar} onPress={handleAdicionar}>
           <Text style={styles.btnAdicionarTxt}>
@@ -257,24 +266,28 @@ export default function DetalheProduto() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#000" },
-  container: { flex: 1, paddingBottom: 80 },
+  containerImagem: {
+    width: "100%",
+    height: 420, // ANTES 230 -> AGORA 420 GIGANTE
+  },
+  imagem: { width: "100%", height: "100%" },
   btnVoltar: {
     position: "absolute",
-    top: 40,
+    top: 50,
     left: 16,
     zIndex: 10,
-    backgroundColor: "rgba(50,50,50,0.6)",
-    padding: 9,
-    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    padding: 10,
+    borderRadius: 22,
   },
   btnCarrinho: {
     position: "absolute",
-    top: 40,
+    top: 50,
     right: 16,
     zIndex: 10,
-    backgroundColor: "rgba(50,50,50,0.6)",
-    padding: 9,
-    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    padding: 10,
+    borderRadius: 22,
   },
   badge: {
     position: "absolute",
@@ -288,78 +301,83 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   badgeTxt: { color: "#000", fontSize: 10, fontWeight: "bold" },
-  containerImagem: { width: "100%", height: 230 },
-  imagem: { width: "100%", height: "100%" },
-  info: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
+  info: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
   nome: {
     color: "#D4AF37",
-    fontSize: 21,
-    fontWeight: "bold",
+    fontSize: 22,
+    fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 1,
   },
-  descricao: { color: "#aaa", fontSize: 12, marginVertical: 1 },
-  preco: { color: "#fff", fontSize: 19, fontWeight: "bold", marginTop: 1 },
+  descricao: { color: "#aaa", fontSize: 13, marginVertical: 4, lineHeight: 16 },
+  preco: { color: "#fff", fontSize: 20, fontWeight: "900", marginTop: 4 },
   cardPersonalizar: {
     backgroundColor: "#1a1a1a",
     marginHorizontal: 16,
-    paddingVertical: 8,
+    marginTop: 12,
+    paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#333",
   },
   tituloPersonalizar: {
     color: "#D4AF37",
     fontSize: 14,
-    fontWeight: "bold",
+    fontWeight: "900",
     marginBottom: 8,
   },
   item: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 6,
+    paddingVertical: 9,
     borderBottomWidth: 1,
     borderBottomColor: "#222",
   },
-  itemNome: { color: "#fff", fontSize: 13 },
-  itemPreco: { color: "#D4AF37", fontSize: 10, marginTop: 1 },
-  subtitulo: { color: "#888", fontSize: 11, marginTop: 6, marginBottom: 1 },
+  itemNome: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  itemPreco: { color: "#D4AF37", fontSize: 11, marginTop: 2 },
+  subtitulo: {
+    color: "#888",
+    fontSize: 11,
+    marginTop: 10,
+    marginBottom: 2,
+    fontWeight: "700",
+  },
   quantidade: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 20,
-    marginTop: 12,
-    marginBottom: 0,
+    gap: 24,
+    marginTop: 18,
+    marginBottom: 10,
   },
   btnQtd: {
     backgroundColor: "#D4AF37",
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: "center",
     alignItems: "center",
   },
-  btnQtdTxt: { color: "#000", fontSize: 18, fontWeight: "bold" },
+  btnQtdTxt: { color: "#000", fontSize: 22, fontWeight: "900" },
   qtd: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-    minWidth: 20,
+    fontSize: 20,
+    fontWeight: "900",
+    minWidth: 24,
     textAlign: "center",
   },
   qtdCoposContainer: { flexDirection: "row", alignItems: "center", gap: 10 },
   btnQtdCopos: {
     backgroundColor: "#D4AF37",
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: "center",
     alignItems: "center",
   },
-  btnQtdCoposTxt: { color: "#000", fontSize: 15, fontWeight: "bold" },
+  btnQtdCoposTxt: { color: "#000", fontSize: 16, fontWeight: "900" },
   qtdCoposNum: {
     color: "#fff",
     fontSize: 15,
@@ -373,14 +391,16 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: "#000",
-    padding: 14,
-    paddingBottom: 24,
+    padding: 16,
+    paddingBottom: 28,
+    borderTopWidth: 1,
+    borderTopColor: "#222",
   },
   btnAdicionar: {
     backgroundColor: "#D4AF37",
-    padding: 14,
-    borderRadius: 12,
+    padding: 16,
+    borderRadius: 14,
     alignItems: "center",
   },
-  btnAdicionarTxt: { color: "#000", fontSize: 15, fontWeight: "bold" },
+  btnAdicionarTxt: { color: "#000", fontSize: 16, fontWeight: "900" },
 });
