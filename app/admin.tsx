@@ -183,18 +183,32 @@ export default function Admin() {
         .includes("RETIRADA");
     let frete = isRetirada
       ? 0
-      : Number(pedido.taxaEntrega ?? pedido.frete ?? config.taxaEntrega ?? 8) ||
-        0;
-    const totalNum =
-      Number(
-        String(pedido.total || "0")
-          .replace(",", ".")
-          .replace("R$", "")
-          .trim(),
-      ) || 0;
-    const subtotal =
-      frete === 0 ? totalNum : totalNum > frete ? totalNum - frete : totalNum;
+      : Number(
+          pedido.taxaEntrega ??
+            pedido.frete ??
+            pedido.valorFrete ??
+            config.taxaEntrega ??
+            8,
+        ) || 0;
+    let subtotalCalc = 0;
+    if (pedido.itens && pedido.itens.length > 0) {
+      pedido.itens.forEach((i) => {
+        const qtd = Number(i.qtd || i.quantidade || 1);
+        const precoU = Number(i.preco || i.precoUnit || i.valor || 0);
+        subtotalCalc += precoU * qtd;
+      });
+    } else {
+      subtotalCalc =
+        Number(
+          String(pedido.subtotal || pedido.total || "0")
+            .replace(",", ".")
+            .replace("R$", "")
+            .trim(),
+        ) || 0;
+    }
+    const totalNum = subtotalCalc + frete;
     const totalExibir = "R$ " + totalNum.toFixed(2).replace(".", ",");
+    const subtotalExibir = "R$ " + subtotalCalc.toFixed(2).replace(".", ",");
     let iframe = document.getElementById("iframe-impressao");
     if (!iframe) {
       iframe = document.createElement("iframe");
@@ -236,8 +250,8 @@ export default function Admin() {
         : " - PAGO") +
       "</div><div class='linha'></div><div style='white-space:pre-wrap;font-size:11px;line-height:17px;'>" +
       resumoComPreco +
-      "</div><div class='linha'></div><div class='tot'><span>SUBTOTAL</span><span>R$ " +
-      subtotal.toFixed(2).replace(".", ",") +
+      "</div><div class='linha'></div><div class='tot'><span>SUBTOTAL</span><span>" +
+      subtotalExibir +
       "</span></div><div class='tot'><span>FRETE</span><span>" +
       (frete === 0 ? "GRATIS" : "R$ " + frete.toFixed(2).replace(".", ",")) +
       "</span></div><div style='display:flex;justify-content:space-between;font-size:18px;font-weight:900;margin-top:6px;border-top:1px dashed #000;padding-top:6px;'><span>TOTAL</span><span>" +
@@ -260,7 +274,6 @@ export default function Admin() {
       },
     );
   }, [autorizado]);
-
   useEffect(() => {
     if (!autorizado || pedidos.length === 0) return;
     pedidos.forEach((p) => {
@@ -331,7 +344,6 @@ export default function Admin() {
       }
     });
   }, [pedidos, autorizado]);
-
   useEffect(() => {
     if (!autorizado) return;
     return onSnapshot(collection(db, "produtos"), (s) =>
@@ -678,7 +690,6 @@ export default function Admin() {
           </View>
         </View>
       </Modal>
-
       <Modal visible={editModal} transparent animationType="slide">
         <View
           style={{
@@ -1650,7 +1661,6 @@ export default function Admin() {
                   </TouchableOpacity>
                 </View>
               </View>
-
               {!config.modoAutomatico && (
                 <View
                   style={{
@@ -1688,7 +1698,6 @@ export default function Admin() {
                   </TouchableOpacity>
                 </View>
               )}
-
               {config.modoAutomatico && (
                 <View
                   style={{
@@ -1805,7 +1814,6 @@ export default function Admin() {
                   </View>
                 </View>
               )}
-
               <View
                 style={{
                   backgroundColor: "#1a1a1a",
