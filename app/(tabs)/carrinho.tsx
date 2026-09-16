@@ -20,6 +20,7 @@ type ConfigLoja = {
   horarioAbre: string;
   horarioFecha: string;
   diasAbertos: string[];
+  taxaEntrega?: number;
 };
 
 function isLojaAbertaAgora(config: ConfigLoja | null) {
@@ -80,6 +81,7 @@ export default function Carrinho() {
             "sexta",
             "sabado",
           ],
+          taxaEntrega: d.taxaEntrega ?? d.valorFrete ?? 8,
         });
       }
     });
@@ -88,10 +90,12 @@ export default function Carrinho() {
 
   const getQtd = (item: any) =>
     item.quantidade ?? item.qtd ?? item.quantity ?? 1;
-  const total = carrinho.reduce(
+  const subtotal = carrinho.reduce(
     (acc: number, item: any) => acc + item.preco * getQtd(item),
     0,
   );
+  const frete = Number(configLoja?.taxaEntrega ?? 8);
+  const total = subtotal + frete;
 
   function handleFinalizar() {
     if (!lojaAberta) {
@@ -120,29 +124,85 @@ export default function Carrinho() {
           </View>
         </View>
       )}
-      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 120 }}>
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 180 }}>
         {carrinho.length === 0 ? (
           <Text style={{ color: "#888", textAlign: "center", marginTop: 50 }}>
             Carrinho vazio
           </Text>
         ) : (
-          carrinho.map((item: any) => (
-            <View key={item.id} style={styles.item}>
-              <Text style={styles.nome}>
-                {item.nome} x{getQtd(item)}
-              </Text>
-              <Text style={styles.preco}>
-                R$ {(item.preco * getQtd(item)).toFixed(2)}
-              </Text>
-            </View>
-          ))
+          carrinho.map((item: any, idx: number) => {
+            const qtd = getQtd(item);
+            const adicionais = item.adicionais || item.extras || [];
+            const obs = item.obs || item.observacao || "";
+            return (
+              <View key={item.id + idx} style={styles.item}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.nome}>
+                    {qtd}x {item.nome?.toUpperCase()}
+                  </Text>
+                  {adicionais.length > 0 && (
+                    <View style={{ marginTop: 6 }}>
+                      {adicionais.map((ad: any, i: number) => {
+                        const nomeAd =
+                          typeof ad === "string"
+                            ? ad
+                            : ad.nome || ad.title || "";
+                        const precoAd = ad.preco
+                          ? ` (+ R$ ${Number(ad.preco).toFixed(2).replace(".", ",")})`
+                          : "";
+                        return (
+                          <Text key={i} style={styles.adicional}>
+                            + {String(nomeAd).toUpperCase()}
+                            {precoAd}
+                          </Text>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {obs ? (
+                    <Text style={styles.obs}>
+                      OBS: {String(obs).toUpperCase()}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.preco}>
+                  R$ {(item.preco * qtd).toFixed(2).replace(".", ",")}
+                </Text>
+              </View>
+            );
+          })
         )}
       </ScrollView>
       {carrinho.length > 0 && (
         <View style={styles.footer}>
-          <Text style={styles.total}>
-            Total: R$ {total.toFixed(2).replace(".", ",")}
-          </Text>
+          <View style={styles.linhaResumo}>
+            <Text style={styles.labelResumo}>Subtotal</Text>
+            <Text style={styles.valorResumo}>
+              R$ {subtotal.toFixed(2).replace(".", ",")}
+            </Text>
+          </View>
+          <View style={styles.linhaResumo}>
+            <Text style={styles.labelResumo}>Taxa de entrega</Text>
+            <Text style={styles.valorResumo}>
+              R$ {frete.toFixed(2).replace(".", ",")}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.linhaResumo,
+              {
+                borderTopWidth: 1,
+                borderColor: "#222",
+                paddingTop: 10,
+                marginTop: 6,
+              },
+            ]}
+          >
+            <Text style={styles.total}>Total</Text>
+            <Text style={styles.totalValor}>
+              R$ {total.toFixed(2).replace(".", ",")}
+            </Text>
+          </View>
           <TouchableOpacity
             style={[styles.btnFinalizar, !lojaAberta && styles.btnFechado]}
             onPress={handleFinalizar}
@@ -156,6 +216,7 @@ export default function Carrinho() {
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#000" },
   header: { padding: 16, paddingTop: 50 },
@@ -174,14 +235,23 @@ const styles = StyleSheet.create({
   bannerSub: { color: "#ffdddd", fontSize: 10, marginTop: 2 },
   item: {
     backgroundColor: "#1a1a1a",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 10,
     flexDirection: "row",
     justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#222",
   },
-  nome: { color: "#fff", fontWeight: "700" },
-  preco: { color: "#D4AF37", fontWeight: "900" },
+  nome: { color: "#fff", fontWeight: "900", fontSize: 14 },
+  adicional: {
+    color: "#D4AF37",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  obs: { color: "#aaa", fontSize: 11, marginTop: 6, fontStyle: "italic" },
+  preco: { color: "#D4AF37", fontWeight: "900", marginLeft: 10 },
   footer: {
     position: "absolute",
     bottom: 0,
@@ -192,12 +262,21 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "#222",
   },
-  total: { color: "#fff", fontSize: 18, fontWeight: "900", marginBottom: 10 },
+  linhaResumo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  labelResumo: { color: "#888", fontSize: 13 },
+  valorResumo: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  total: { color: "#fff", fontSize: 18, fontWeight: "900" },
+  totalValor: { color: "#D4AF37", fontSize: 18, fontWeight: "900" },
   btnFinalizar: {
     backgroundColor: "#D4AF37",
     padding: 16,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: "center",
+    marginTop: 12,
   },
   btnFechado: { backgroundColor: "#333" },
   btnTxt: { color: "#000", fontWeight: "900", fontSize: 16 },
