@@ -5,369 +5,200 @@ import { useRouter } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  FlatList,
-  Image,
+  Alert,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 
-type TipoEntrega = "entrega" | "retirada";
+type ConfigLoja = {
+  aberto: boolean;
+  modoAutomatico: boolean;
+  horarioAbre: string;
+  horarioFecha: string;
+  diasAbertos: string[];
+};
+
+function isLojaAbertaAgora(config: ConfigLoja | null) {
+  if (!config) return true;
+  if (!config.modoAutomatico) return config.aberto;
+  try {
+    const agora = new Date();
+    const horaBR = new Date(
+      agora.toLocaleString("en-US", { timeZone: "America/Bahia" }),
+    );
+    const diaSemana = [
+      "domingo",
+      "segunda",
+      "terca",
+      "quarta",
+      "quinta",
+      "sexta",
+      "sabado",
+    ][horaBR.getDay()];
+    if (!(config.diasAbertos || []).includes(diaSemana)) return false;
+    const [hAbre, mAbre] = (config.horarioAbre || "17:00")
+      .split(":")
+      .map(Number);
+    const [hFecha, mFecha] = (config.horarioFecha || "22:00")
+      .split(":")
+      .map(Number);
+    const minutosAgora = horaBR.getHours() * 60 + horaBR.getMinutes();
+    const minutosAbre = hAbre * 60 + mAbre;
+    const minutosFecha = hFecha * 60 + mFecha;
+    if (minutosFecha < minutosAbre)
+      return minutosAgora >= minutosAbre || minutosAgora <= minutosFecha;
+    return minutosAgora >= minutosAbre && minutosAgora <= minutosFecha;
+  } catch {
+    return config.aberto;
+  }
+}
 
 export default function Carrinho() {
-  const { carrinho, remover, aumentar, diminuir, total } = useCarrinho();
+  const { carrinho } = useCarrinho();
+  const [configLoja, setConfigLoja] = useState<ConfigLoja | null>(null);
   const router = useRouter();
-
-  const [tipo, setTipo] = useState<TipoEntrega>("entrega");
-  const [taxaEntrega, setTaxaEntrega] = useState(8);
-  const [tempoEntrega, setTempoEntrega] = useState("10 a 26 min");
-  const [tempoRetirada, setTempoRetirada] = useState("12 a 25 min");
-  const [aberto, setAberto] = useState(true);
+  const lojaAberta = isLojaAbertaAgora(configLoja);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
       if (snap.exists()) {
-        const d = snap.data();
-        setTaxaEntrega(d.taxaEntrega ?? 8);
-        setTempoEntrega(d.tempoEntrega ?? d.tempoMedio ?? "10 a 26 min");
-        setTempoRetirada(d.tempoRetirada ?? "12 a 25 min");
-        setAberto(d.aberto ?? true);
+        const d = snap.data() as any;
+        setConfigLoja({
+          aberto: d.aberto ?? true,
+          modoAutomatico: d.modoAutomatico ?? true,
+          horarioAbre: d.horarioAbre || "17:00",
+          horarioFecha: d.horarioFecha || "22:00",
+          diasAbertos: d.diasAbertos || [
+            "segunda",
+            "terca",
+            "quarta",
+            "quinta",
+            "sexta",
+            "sabado",
+          ],
+        });
       }
     });
     return () => unsub();
   }, []);
 
-  const getQtd = (item: any) => item.quantidade || item.qtd || 1;
-  const getId = (item: any) => item.itemId || item.id;
+  const getQtd = (item: any) =>
+    item.quantidade ?? item.qtd ?? item.quantity ?? 1;
+  const total = carrinho.reduce(
+    (acc: number, item: any) => acc + item.preco * getQtd(item),
+    0,
+  );
 
-  const frete = tipo === "retirada" ? 0 : taxaEntrega;
-  const totalFinal = total + frete;
-  const tempoMostrado = tipo === "retirada" ? tempoRetirada : tempoEntrega;
-
-  const handleFinalizar = () => {
-    if (!aberto) {
-      alert("Loja fechada no momento!");
+  function handleFinalizar() {
+    if (!lojaAberta) {
+      Alert.alert(
+        "⛔ Loja Fechada",
+        `Abrimos das ${configLoja?.horarioAbre} às ${configLoja?.horarioFecha}`,
+      );
       return;
     }
-    const textoDoCarrinho = carrinho
-      .map((item: any) => {
-        let texto = `${getQtd(item)}x ${item.nome.toUpperCase()}`;
-        if (item.adicionais?.length > 0)
-          texto += `\n   + ${item.adicionais.join(", ")}`;
-        return texto;
-      })
-      .join("\n\n");
-
-    router.push(
-      `/checkout?resumo=${encodeURIComponent(textoDoCarrinho)}&subtotal=${total}&taxa=${frete}&total=${totalFinal}&tipo=${tipo}&tempo=${encodeURIComponent(tempoMostrado)}`,
-    );
-  };
-
-  if (carrinho.length === 0) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.push("/(tabs)/catalogo")}>
-            <Ionicons name="arrow-back" size={28} color="#D4AF37" />
-          </TouchableOpacity>
-          <Text style={styles.titulo}>Carrinho</Text>
-        </View>
-        <View style={styles.vazio}>
-          <Text style={styles.vazioTxt}>Seu carrinho está vazio</Text>
-        </View>
-      </SafeAreaView>
-    );
+    router.push("/checkout");
   }
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push("/(tabs)/catalogo")}>
-          <Ionicons name="arrow-back" size={28} color="#D4AF37" />
-        </TouchableOpacity>
         <Text style={styles.titulo}>Carrinho</Text>
       </View>
-
-      <FlatList
-        data={carrinho}
-        keyExtractor={(item: any, index) => `${getId(item)}-${index}`}
-        contentContainerStyle={{ padding: 16, paddingBottom: 280 }}
-        ListFooterComponent={
-          <View style={{ marginTop: 20 }}>
-            <Text style={styles.secaoTitulo}>COMO QUER RECEBER?</Text>
-
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity
-                onPress={() => setTipo("entrega")}
-                style={[
-                  styles.cardTipo,
-                  tipo === "entrega" && styles.cardTipoAtivo,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tipoTitulo,
-                    tipo === "entrega" && styles.tipoAtivo,
-                  ]}
-                >
-                  🛵 ENTREGA
-                </Text>
-                <Text style={styles.tipoSub}>
-                  R$ {taxaEntrega.toFixed(2).replace(".", ",")}
-                </Text>
-                <Text style={styles.tipoTempo}>{tempoEntrega}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setTipo("retirada")}
-                style={[
-                  styles.cardTipo,
-                  tipo === "retirada" && styles.cardTipoAtivoVerde,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tipoTitulo,
-                    tipo === "retirada" && styles.tipoAtivoVerdeTxt,
-                  ]}
-                >
-                  🏃 RETIRADA
-                </Text>
-                <Text style={styles.tipoSub}>GRÁTIS</Text>
-                <Text style={styles.tipoTempo}>{tempoRetirada}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {!aberto && (
-              <View style={styles.alertaFechado}>
-                <Text style={styles.alertaTxt}>⛔ LOJA FECHADA NO MOMENTO</Text>
-              </View>
-            )}
-          </View>
-        }
-        renderItem={({ item }: any) => (
-          <View style={styles.card}>
-            <Image
-              source={{ uri: item.imagemURL || item.imagem }}
-              style={styles.imagem}
-            />
-            <TouchableOpacity
-              style={styles.btnLixo}
-              onPress={() => remover(getId(item))}
-            >
-              <Ionicons name="trash" size={22} color="red" />
-            </TouchableOpacity>
-            <View style={styles.info}>
-              <Text style={styles.nome}>
-                {getQtd(item)}x {item.nome.toUpperCase()}
-              </Text>
-              {item.adicionais?.length > 0 && (
-                <Text style={styles.adicionais}>
-                  + {item.adicionais.join(", ")}
-                </Text>
-              )}
-              <Text style={styles.preco}>
-                R${" "}
-                {(Number(item.preco) * getQtd(item))
-                  .toFixed(2)
-                  .replace(".", ",")}
-              </Text>
-              <View style={styles.qtdContainer}>
-                <Text style={styles.qtdLabel}>Quantidade</Text>
-                <View style={styles.qtdBotoes}>
-                  <TouchableOpacity
-                    style={styles.btnQtd}
-                    onPress={() => diminuir(getId(item))}
-                  >
-                    <Text style={styles.btnQtdTxt}>-</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.qtd}>{getQtd(item)}</Text>
-                  <TouchableOpacity
-                    style={styles.btnQtd}
-                    onPress={() => aumentar(getId(item))}
-                  >
-                    <Text style={styles.btnQtdTxt}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-      />
-
-      <View style={styles.footer}>
-        <View style={{ gap: 4, marginBottom: 12 }}>
-          <View style={styles.linhaTotal}>
-            <Text style={styles.totalLabel}>Subtotal</Text>
-            <Text style={styles.totalLabel}>
-              R$ {total.toFixed(2).replace(".", ",")}
-            </Text>
-          </View>
-          <View style={styles.linhaTotal}>
-            <Text style={styles.totalLabel}>
-              Frete ({tipo}) - {tempoMostrado}
-            </Text>
-            <Text style={styles.totalLabel}>
-              {frete === 0
-                ? "GRÁTIS"
-                : `R$ ${frete.toFixed(2).replace(".", ",")}`}
-            </Text>
-          </View>
-          <View style={styles.linhaDivisoria} />
-          <View style={[styles.linhaTotal, { marginTop: 4 }]}>
-            <Text style={styles.total}>Total:</Text>
-            <Text style={styles.total}>
-              R$ {totalFinal.toFixed(2).replace(".", ",")}
+      {!lojaAberta && (
+        <View style={styles.bannerFechado}>
+          <Ionicons name="lock-closed" size={18} color="#fff" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bannerTitulo}>LOJA FECHADA - NÃO FINALIZA</Text>
+            <Text style={styles.bannerSub}>
+              Horário: {configLoja?.horarioAbre} às {configLoja?.horarioFecha}
             </Text>
           </View>
         </View>
-
-        <TouchableOpacity
-          style={[styles.btnFinalizar, !aberto && { backgroundColor: "#555" }]}
-          onPress={handleFinalizar}
-          disabled={!aberto}
-        >
-          <Text style={styles.btnFinalizarTxt}>
-            {tipo === "retirada"
-              ? "CONFIRMAR RETIRADA"
-              : "FINALIZAR COM ENTREGA"}
+      )}
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 120 }}>
+        {carrinho.length === 0 ? (
+          <Text style={{ color: "#888", textAlign: "center", marginTop: 50 }}>
+            Carrinho vazio
           </Text>
-        </TouchableOpacity>
-      </View>
+        ) : (
+          carrinho.map((item: any) => (
+            <View key={item.id} style={styles.item}>
+              <Text style={styles.nome}>
+                {item.nome} x{getQtd(item)}
+              </Text>
+              <Text style={styles.preco}>
+                R$ {(item.preco * getQtd(item)).toFixed(2)}
+              </Text>
+            </View>
+          ))
+        )}
+      </ScrollView>
+      {carrinho.length > 0 && (
+        <View style={styles.footer}>
+          <Text style={styles.total}>
+            Total: R$ {total.toFixed(2).replace(".", ",")}
+          </Text>
+          <TouchableOpacity
+            style={[styles.btnFinalizar, !lojaAberta && styles.btnFechado]}
+            onPress={handleFinalizar}
+          >
+            <Text style={[styles.btnTxt, !lojaAberta && { color: "#888" }]}>
+              {lojaAberta ? "FINALIZAR PEDIDO" : "⛔ LOJA FECHADA"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#000" },
-  header: {
+  header: { padding: 16, paddingTop: 50 },
+  titulo: { color: "#D4AF37", fontSize: 28, fontWeight: "900" },
+  bannerFechado: {
+    backgroundColor: "#ff4444",
     flexDirection: "row",
     alignItems: "center",
-    padding: 20,
-    paddingTop: 50,
-    backgroundColor: "#000",
-  },
-  titulo: {
-    color: "#D4AF37",
-    fontSize: 34,
-    fontWeight: "900",
-    flex: 1,
-    textAlign: "center",
-    marginRight: 32,
-    textTransform: "uppercase",
-    letterSpacing: 1.5,
-  },
-  vazio: { flex: 1, justifyContent: "center", alignItems: "center" },
-  vazioTxt: { color: "#888", fontSize: 16 },
-  secaoTitulo: {
-    color: "#D4AF37",
-    fontWeight: "900",
+    gap: 10,
+    padding: 12,
+    marginHorizontal: 12,
+    borderRadius: 10,
     marginBottom: 10,
-    letterSpacing: 1,
   },
-  cardTipo: {
-    flex: 1,
+  bannerTitulo: { color: "#fff", fontWeight: "900", fontSize: 12 },
+  bannerSub: { color: "#ffdddd", fontSize: 10, marginTop: 2 },
+  item: {
     backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 15,
-    borderWidth: 2,
-    borderColor: "#222",
-  },
-  cardTipoAtivo: { borderColor: "#D4AF37", backgroundColor: "#2a2210" },
-  cardTipoAtivoVerde: { borderColor: "#00C851", backgroundColor: "#102a15" },
-  tipoTitulo: { color: "#fff", fontWeight: "900", fontSize: 14 },
-  tipoAtivo: { color: "#D4AF37" },
-  tipoAtivoVerdeTxt: { color: "#00C851" },
-  tipoSub: { color: "#fff", fontSize: 13, marginTop: 4, fontWeight: "bold" },
-  tipoTempo: { color: "#888", fontSize: 11, marginTop: 2 },
-  alertaFechado: {
-    backgroundColor: "#ff4444",
     padding: 12,
     borderRadius: 10,
-    marginTop: 12,
-    alignItems: "center",
-  },
-  alertaTxt: { color: "#fff", fontWeight: "900" },
-  card: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    marginBottom: 16,
-    overflow: "hidden",
-  },
-  imagem: { width: "100%", height: 130 },
-  btnLixo: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    padding: 9,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  info: { padding: 14 },
-  nome: { color: "#D4AF37", fontSize: 17, fontWeight: "bold" },
-  adicionais: {
-    color: "#D4AF37",
-    fontSize: 12,
-    backgroundColor: "#222",
-    padding: 7,
-    borderRadius: 6,
-    marginVertical: 7,
-  },
-  preco: { color: "#fff", fontSize: 17, fontWeight: "bold", marginBottom: 10 },
-  qtdContainer: {
+    marginBottom: 8,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
   },
-  qtdLabel: { color: "#D4AF37", fontWeight: "bold", fontSize: 14 },
-  qtdBotoes: { flexDirection: "row", alignItems: "center", gap: 14 },
-  btnQtd: {
-    backgroundColor: "#D4AF37",
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  btnQtdTxt: { color: "#000", fontSize: 20, fontWeight: "bold" },
-  qtd: { color: "#fff", fontSize: 17, fontWeight: "bold" },
-  // LINHA + SOMBRA - MAIS VISIVEL
+  nome: { color: "#fff", fontWeight: "700" },
+  preco: { color: "#D4AF37", fontWeight: "900" },
   footer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "#0a0a0a",
+    backgroundColor: "#111",
     padding: 16,
-    paddingBottom: 30,
-    borderTopWidth: 1.5,
-    borderTopColor: "#D4AF37",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    shadowColor: "#D4AF37",
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    elevation: 25,
+    borderTopWidth: 1,
+    borderColor: "#222",
   },
-  linhaDivisoria: {
-    height: 1,
-    backgroundColor: "rgba(212, 175, 55, 0.25)",
-    marginTop: 10,
-    marginBottom: 2,
-  },
-  linhaTotal: { flexDirection: "row", justifyContent: "space-between" },
-  totalLabel: { color: "#aaa", fontSize: 14 },
-  total: { color: "#fff", fontSize: 20, fontWeight: "900" },
+  total: { color: "#fff", fontSize: 18, fontWeight: "900", marginBottom: 10 },
   btnFinalizar: {
     backgroundColor: "#D4AF37",
-    padding: 17,
-    borderRadius: 12,
+    padding: 16,
+    borderRadius: 10,
     alignItems: "center",
-    marginTop: 6,
   },
-  btnFinalizarTxt: { color: "#000", fontSize: 17, fontWeight: "900" },
+  btnFechado: { backgroundColor: "#333" },
+  btnTxt: { color: "#000", fontWeight: "900", fontSize: 16 },
 });

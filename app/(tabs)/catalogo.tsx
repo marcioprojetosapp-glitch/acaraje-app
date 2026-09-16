@@ -2,7 +2,7 @@ import { useCarrinho } from "@/src/context/CarrinhoContext";
 import { db } from "@/src/lib/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDocs, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   FlatList,
@@ -24,19 +24,86 @@ type Produto = {
   estoque: number;
 };
 
+type ConfigLoja = {
+  aberto: boolean;
+  modoAutomatico: boolean;
+  horarioAbre: string;
+  horarioFecha: string;
+  diasAbertos: string[];
+};
+
+function isLojaAbertaAgora(config: ConfigLoja | null) {
+  if (!config) return true;
+  if (!config.modoAutomatico) {
+    return config.aberto;
+  }
+  try {
+    const agora = new Date();
+    const horaBR = new Date(
+      agora.toLocaleString("en-US", { timeZone: "America/Bahia" }),
+    );
+    const diaSemana = [
+      "domingo",
+      "segunda",
+      "terca",
+      "quarta",
+      "quinta",
+      "sexta",
+      "sabado",
+    ][horaBR.getDay()];
+    if (!(config.diasAbertos || []).includes(diaSemana)) return false;
+    const [hAbre, mAbre] = (config.horarioAbre || "17:00")
+      .split(":")
+      .map(Number);
+    const [hFecha, mFecha] = (config.horarioFecha || "22:00")
+      .split(":")
+      .map(Number);
+    const minutosAgora = horaBR.getHours() * 60 + horaBR.getMinutes();
+    const minutosAbre = hAbre * 60 + mAbre;
+    const minutosFecha = hFecha * 60 + mFecha;
+    if (minutosFecha < minutosAbre) {
+      return minutosAgora >= minutosAbre || minutosAgora <= minutosFecha;
+    }
+    return minutosAgora >= minutosAbre && minutosAgora <= minutosFecha;
+  } catch {
+    return config.aberto;
+  }
+}
+
 export default function Catalogo() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [filtro, setFiltro] = useState("TODOS");
+  const [configLoja, setConfigLoja] = useState<ConfigLoja | null>(null);
   const router = useRouter();
   const { carrinho } = useCarrinho();
-
   const totalItens = carrinho.reduce(
     (acc, item) => acc + (item.quantidade ?? 0),
     0,
   );
+  const lojaAberta = isLojaAbertaAgora(configLoja);
 
   useEffect(() => {
     carregarProdutos();
+    const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as any;
+        setConfigLoja({
+          aberto: data.aberto ?? true,
+          modoAutomatico: data.modoAutomatico ?? true,
+          horarioAbre: data.horarioAbre || "17:00",
+          horarioFecha: data.horarioFecha || "22:00",
+          diasAbertos: data.diasAbertos || [
+            "segunda",
+            "terca",
+            "quarta",
+            "quinta",
+            "sexta",
+            "sabado",
+          ],
+        });
+      }
+    });
+    return () => unsub();
   }, []);
 
   async function carregarProdutos() {
@@ -51,11 +118,9 @@ export default function Catalogo() {
     filtro === "TODOS"
       ? produtos
       : produtos.filter((p) => (p.categoria || "").toUpperCase() === filtro);
-
   function irParaDetalhe(id: string) {
     router.push(`/detalhe/${id}`);
   }
-
   const categorias = ["TODOS", "PRATO", "BEBIDA", "OUTRO"];
 
   return (
@@ -74,6 +139,29 @@ export default function Catalogo() {
           )}
         </TouchableOpacity>
       </View>
+
+      {!lojaAberta && (
+        <View style={styles.bannerFechado}>
+          <Ionicons name="time" size={18} color="#fff" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bannerTitulo}>⛔ LOJA FECHADA NO MOMENTO</Text>
+            <Text style={styles.bannerSub}>
+              {configLoja?.modoAutomatico
+                ? `Abre ${configLoja.horarioAbre} às ${configLoja.horarioFecha} - ${configLoja.diasAbertos?.join(", ")}`
+                : "Voltamos em breve! Você pode ver o cardápio."}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {lojaAberta && configLoja?.modoAutomatico && (
+        <View style={styles.bannerAberto}>
+          <Text style={styles.bannerAbertoTxt}>
+            🟢 ABERTA AGORA • {configLoja.horarioAbre} às{" "}
+            {configLoja.horarioFecha}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.filtros}>
         {categorias.map((cat) => (
@@ -101,12 +189,12 @@ export default function Catalogo() {
         contentContainerStyle={{ padding: 6, paddingBottom: 80 }}
         ListEmptyComponent={() => (
           <Text style={{ color: "#888", textAlign: "center", marginTop: 40 }}>
-            Nenhum produto encontrado nesta categoria
+            Nenhum produto encontrado
           </Text>
         )}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.card}
+            style={[styles.card, !lojaAberta && styles.cardFechado]}
             onPress={() => irParaDetalhe(item.id)}
             activeOpacity={0.85}
           >
@@ -136,14 +224,25 @@ export default function Catalogo() {
               <Text style={styles.estoque}>Est: {item.estoque}</Text>
             </View>
             <TouchableOpacity
-              style={styles.btnDetalhe}
+              style={[
+                styles.btnDetalhe,
+                !lojaAberta && styles.btnDetalheFechado,
+              ]}
               onPress={(e) => {
                 e.stopPropagation();
                 irParaDetalhe(item.id);
               }}
             >
-              <Ionicons name="eye" size={12} color="#000" />
-              <Text style={styles.btnDetalheTxt}>Ver Detalhes</Text>
+              <Ionicons
+                name={lojaAberta ? "eye" : "lock-closed"}
+                size={12}
+                color={lojaAberta ? "#000" : "#888"}
+              />
+              <Text
+                style={[styles.btnDetalheTxt, !lojaAberta && { color: "#888" }]}
+              >
+                {lojaAberta ? "Ver Detalhes" : "FECHADO"}
+              </Text>
             </TouchableOpacity>
           </TouchableOpacity>
         )}
@@ -161,11 +260,7 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 50,
   },
-  titulo: {
-    color: "#D4AF37",
-    fontSize: 28,
-    fontWeight: "900",
-  },
+  titulo: { color: "#D4AF37", fontSize: 28, fontWeight: "900" },
   btnCarrinhoHeader: { position: "relative", padding: 4 },
   badge: {
     position: "absolute",
@@ -182,6 +277,31 @@ const styles = StyleSheet.create({
     borderColor: "#000",
   },
   badgeTxt: { color: "#fff", fontSize: 12, fontWeight: "bold" },
+  bannerFechado: {
+    backgroundColor: "#ff4444",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    marginHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: "#ff6666",
+  },
+  bannerTitulo: { color: "#fff", fontWeight: "900", fontSize: 12 },
+  bannerSub: { color: "#ffdddd", fontSize: 10, marginTop: 2 },
+  bannerAberto: {
+    backgroundColor: "#102a15",
+    padding: 8,
+    marginHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#00C851",
+    alignItems: "center",
+  },
+  bannerAbertoTxt: { color: "#00C851", fontWeight: "900", fontSize: 10 },
   filtros: {
     flexDirection: "row",
     gap: 8,
@@ -209,35 +329,18 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingBottom: 6,
   },
-  imagem: {
-    width: "100%",
-    height: 210, // IMAGEM BEM MAIOR
-    backgroundColor: "#222",
-  },
-  info: {
-    paddingHorizontal: 8,
-    paddingTop: 5,
-    paddingBottom: 2,
-  },
+  cardFechado: { borderColor: "#444", opacity: 0.7 },
+  imagem: { width: "100%", height: 210, backgroundColor: "#222" },
+  info: { paddingHorizontal: 8, paddingTop: 5, paddingBottom: 2 },
   nome: {
     color: "#fff",
-    fontSize: 11, // COMPACTO
+    fontSize: 11,
     fontWeight: "900",
     marginBottom: 1,
     textTransform: "uppercase",
   },
-  preco: {
-    color: "#D4AF37",
-    fontSize: 14, // COMPACTO
-    fontWeight: "900",
-    marginBottom: 0,
-  },
-  estoque: {
-    color: "#888",
-    fontSize: 9, // BEM PEQUENO
-    marginBottom: 2,
-    marginTop: 1,
-  },
+  preco: { color: "#D4AF37", fontSize: 14, fontWeight: "900", marginBottom: 0 },
+  estoque: { color: "#888", fontSize: 9, marginBottom: 2, marginTop: 1 },
   btnDetalhe: {
     backgroundColor: "#D4AF37",
     flexDirection: "row",
@@ -246,8 +349,9 @@ const styles = StyleSheet.create({
     gap: 4,
     marginHorizontal: 6,
     marginTop: 2,
-    paddingVertical: 6, // BEM COMPACTO
+    paddingVertical: 6,
     borderRadius: 7,
   },
+  btnDetalheFechado: { backgroundColor: "#333" },
   btnDetalheTxt: { color: "#000", fontWeight: "900", fontSize: 10 },
 });
