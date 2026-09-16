@@ -8,6 +8,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -53,7 +54,6 @@ export default function Admin() {
   const [clientes, setClientes] = useState([]);
   const [aba, setAba] = useState("pedidos");
   const [filtro, setFiltro] = useState("todos");
-  // MANTIDO SEU TEMPO ATUAL DO PRINT
   const [config, setConfig] = useState({
     taxaEntrega: 8,
     tempoEntrega: "10 a 23 min",
@@ -65,7 +65,6 @@ export default function Admin() {
     horarioFecha: "22:00",
     diasAbertos: ["segunda", "terca", "quarta", "quinta", "sexta", "sabado"],
   });
-
   const [nome, setNome] = useState("");
   const [preco, setPreco] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -421,6 +420,39 @@ export default function Admin() {
     }
   };
 
+  const exportarClientes = () => {
+    if (clientes.length === 0) {
+      Alert.alert("Nenhum cliente ainda");
+      return;
+    }
+    let csv = "NOME,WHATSAPP,ACEITA_PROMO,ULTIMO_PEDIDO\n";
+    clientes.forEach((c) => {
+      const data = c.ultimoPedido?.toDate
+        ? c.ultimoPedido.toDate().toLocaleDateString("pt-BR")
+        : "";
+      csv +=
+        '"' +
+        (c.nome || "").replace(/"/g, "") +
+        '","' +
+        (c.whatsapp || "") +
+        '","' +
+        (c.aceitaPromo ? "SIM" : "NAO") +
+        '","' +
+        data +
+        '"\n';
+    });
+    if (Platform.OS === "web") {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        "clientes-acaraje-" + new Date().toISOString().slice(0, 10) + ".csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const pedidosFiltrados = pedidos.filter((p) => {
     const isPagoAuto =
       p.pago === true ||
@@ -462,6 +494,55 @@ export default function Admin() {
       alert("Erro ao apagar: " + e.message);
     }
   };
+  const apagarTodos = async () => {
+    try {
+      const confirma =
+        Platform.OS === "web"
+          ? window.confirm("APAGAR TODO HISTÓRICO DE TESTES?")
+          : true;
+      if (Platform.OS !== "web") {
+        Alert.alert("APAGAR TUDO?", "Apagar TODOS?", [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "APAGAR TUDO",
+            style: "destructive",
+            onPress: async () => {
+              const snap = await getDocs(collection(db, "pedidos"));
+              for (const d of snap.docs)
+                await deleteDoc(doc(db, "pedidos", d.id));
+            },
+          },
+        ]);
+        return;
+      }
+      if (!confirma) return;
+      const snap = await getDocs(collection(db, "pedidos"));
+      for (const d of snap.docs) await deleteDoc(doc(db, "pedidos", d.id));
+      alert("Histórico limpo! (" + snap.size + " pedidos)");
+    } catch (e) {
+      alert("Erro ao apagar tudo: " + e.message);
+    }
+  };
+  const corrigirTodoEstoque = async () => {
+    if (
+      Platform.OS === "web" &&
+      !window.confirm(
+        "Colocar 50 de estoque em TODOS os produtos que estão SEM ESTOQUE?",
+      )
+    )
+      return;
+    const snap = await getDocs(collection(db, "produtos"));
+    for (const d of snap.docs) {
+      const data = d.data();
+      if (!data.disponivel || (data.estoque || 0) <= 0) {
+        await updateDoc(doc(db, "produtos", d.id), {
+          estoque: 50,
+          disponivel: true,
+        });
+      }
+    }
+    alert("Pronto! Todo mundo com estoque 50 agora!");
+  };
 
   const salvarProduto = async () => {
     if (!nome || !preco) return Alert.alert("Falta nome/preço");
@@ -481,7 +562,6 @@ export default function Admin() {
     setEstoque("");
     setImageUrl(null);
   };
-
   const salvarEdicao = async () => {
     if (!editando) return;
     const qtd = Number(String(editando.estoque).replace(",", ".").trim()) || 0;
@@ -496,13 +576,11 @@ export default function Admin() {
     setEditModal(false);
     setEditando(null);
   };
-
   const toggleLoja = async () => {
     const novo = !config.aberto;
     await setDoc(doc(db, "config", "loja"), { aberto: novo }, { merge: true });
     setConfig({ ...config, aberto: novo });
   };
-
   const salvarConfig = async () => {
     await setDoc(
       doc(db, "config", "loja"),
@@ -522,12 +600,15 @@ export default function Admin() {
     if (Platform.OS === "web") window.alert("✅ SALVO!");
     else Alert.alert("✅ SALVO!");
   };
-
   const marcarPago = async (p) => {
     await updateDoc(doc(db, "pedidos", p.id), { pago: true, status: "pago" });
   };
   const marcarEntregue = async (p) => {
     await updateDoc(doc(db, "pedidos", p.id), { status: "entregue" });
+  };
+  const apagarProduto = async (id) => {
+    if (Platform.OS === "web" && !window.confirm("Apagar produto?")) return;
+    await deleteDoc(doc(db, "produtos", id));
   };
   const uploadToCloudinary = async (uri) => {
     setUploading(true);
@@ -866,7 +947,7 @@ export default function Admin() {
                   color: aba === "produtos" ? "#000" : "#FFFFFF",
                 }}
               >
-                PRODUTOS
+                PRODUTOS ({produtos.length})
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -895,7 +976,62 @@ export default function Admin() {
 
           {aba === "pedidos" && (
             <View>
-              {/* AQUI ESTÁ SEU FILTRO QUE SUMIU - VOLTEI */}
+              <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
+                <TouchableOpacity
+                  onPress={exportarClientes}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#1a1a1a",
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#D4AF37",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{ color: "#D4AF37", fontWeight: "900", fontSize: 9 }}
+                  >
+                    📥 EXPORTAR CLIENTES
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={corrigirTodoEstoque}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#1a1a1a",
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#555",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{ color: "#fff", fontWeight: "900", fontSize: 9 }}
+                  >
+                    🔧 CORRIGIR ESTOQUE
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={apagarTodos}
+                  style={{
+                    backgroundColor: "#330000",
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "red",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{ color: "red", fontWeight: "900", fontSize: 9 }}
+                  >
+                    🗑️ APAGAR HISTÓRICO
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
                 {[
                   { id: "todos", lb: "TODOS" },
@@ -1205,7 +1341,7 @@ export default function Admin() {
                                   fontSize: 12,
                                 }}
                               >
-                                MARCAR PAGO + IMPRIMIR
+                                MARCAR PAGO
                               </Text>
                             </TouchableOpacity>
                           )}
@@ -1251,6 +1387,218 @@ export default function Admin() {
                     </View>
                   );
                 })}
+              </View>
+            </View>
+          )}
+
+          {aba === "produtos" && (
+            <View style={{ gap: 12 }}>
+              <View
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  padding: 14,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#333",
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#D4AF37",
+                    fontWeight: "900",
+                    marginBottom: 10,
+                  }}
+                >
+                  CADASTRAR PRODUTO
+                </Text>
+                <TouchableOpacity
+                  onPress={pickImage}
+                  style={{
+                    backgroundColor: "#222",
+                    height: 120,
+                    borderRadius: 10,
+                    justifyContent: "center",
+                    alignItems: "center",
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    borderColor: "#333",
+                  }}
+                >
+                  {imageUrl ? (
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 10,
+                      }}
+                    />
+                  ) : (
+                    <Text style={{ color: "#888" }}>
+                      {uploading ? "ENVIANDO..." : "📷 FOTO"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TextInput
+                  placeholder="Nome"
+                  placeholderTextColor="#666"
+                  value={nome}
+                  onChangeText={setNome}
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#333",
+                    marginBottom: 8,
+                  }}
+                />
+                <TextInput
+                  placeholder="Preço ex: 15.00"
+                  placeholderTextColor="#666"
+                  value={preco}
+                  onChangeText={setPreco}
+                  keyboardType="numeric"
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#333",
+                    marginBottom: 8,
+                  }}
+                />
+                <TextInput
+                  placeholder="Descrição"
+                  placeholderTextColor="#666"
+                  value={descricao}
+                  onChangeText={setDescricao}
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#333",
+                    marginBottom: 8,
+                  }}
+                />
+                <TextInput
+                  placeholder="Estoque"
+                  placeholderTextColor="#666"
+                  value={estoque}
+                  onChangeText={setEstoque}
+                  keyboardType="numeric"
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#333",
+                    marginBottom: 10,
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={salvarProduto}
+                  style={{
+                    backgroundColor: "#D4AF37",
+                    padding: 14,
+                    borderRadius: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ fontWeight: "900" }}>SALVAR PRODUTO</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ gap: 8 }}>
+                {produtos.map((prod) => (
+                  <View
+                    key={prod.id}
+                    style={{
+                      backgroundColor: "#1a1a1a",
+                      padding: 12,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: prod.disponivel ? "#333" : "red",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    {prod.imagemURL ? (
+                      <Image
+                        source={{ uri: prod.imagemURL }}
+                        style={{ width: 50, height: 50, borderRadius: 8 }}
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: 50,
+                          height: 50,
+                          borderRadius: 8,
+                          backgroundColor: "#222",
+                        }}
+                      />
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          color: "#fff",
+                          fontWeight: "900",
+                          fontSize: 12,
+                        }}
+                      >
+                        {prod.nome}
+                      </Text>
+                      <Text style={{ color: "#D4AF37", fontSize: 11 }}>
+                        R$ {prod.preco} | EST: {prod.estoque ?? 0}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditando(prod);
+                        setEditModal(true);
+                      }}
+                      style={{
+                        backgroundColor: "#333",
+                        padding: 10,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: "#fff",
+                          fontSize: 10,
+                          fontWeight: "900",
+                        }}
+                      >
+                        EDITAR
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => apagarProduto(prod.id)}
+                      style={{
+                        backgroundColor: "#330000",
+                        padding: 10,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: "red",
+                          fontSize: 10,
+                          fontWeight: "900",
+                        }}
+                      >
+                        X
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
             </View>
           )}
@@ -1533,7 +1881,7 @@ export default function Admin() {
                 <Text
                   style={{ color: "#D4AF37", fontSize: 10, fontWeight: "900" }}
                 >
-                  ⏱️ TEMPO ENTREGA
+                  ⏱️ TEMPO ENTREGA (10 a 23 min)
                 </Text>
                 <TextInput
                   value={config.tempoEntrega}
@@ -1553,7 +1901,7 @@ export default function Admin() {
                 <Text
                   style={{ color: "#00C851", fontSize: 10, fontWeight: "900" }}
                 >
-                  ⏱️ TEMPO RETIRADA
+                  ⏱️ TEMPO RETIRADA (11a 24min)
                 </Text>
                 <TextInput
                   value={config.tempoRetirada}
