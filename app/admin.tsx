@@ -1,5 +1,4 @@
 // @ts-nocheck
-import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import {
@@ -8,7 +7,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -60,6 +58,10 @@ export default function Admin() {
     tempoRetirada: "15 a 25 min",
     tempoMedio: "40 a 60 min",
     aberto: true,
+    modoAutomatico: true,
+    horarioAbre: "17:00",
+    horarioFecha: "22:00",
+    diasAbertos: ["segunda", "terca", "quarta", "quinta", "sexta", "sabado"],
   });
   const [nome, setNome] = useState("");
   const [preco, setPreco] = useState("");
@@ -289,53 +291,6 @@ export default function Admin() {
         updateDoc(doc(db, "pedidos", p.id), { impresso: true }).catch(() => {});
       }
     });
-    pedidos.forEach((p) => {
-      if (
-        p.formaPagamento === "DINHEIRO" &&
-        p.status === "aguardando_confirmacao" &&
-        !ultimoAlertaDinheiro.current.has(p.id)
-      ) {
-        ultimoAlertaDinheiro.current.add(p.id);
-        if (Platform.OS === "web") {
-          try {
-            const ctx = new (
-              window.AudioContext || window.webkitAudioContext
-            )();
-            [0, 350, 700].forEach((delay) => {
-              setTimeout(() => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.frequency.value = 880;
-                gain.gain.value = 0.8;
-                osc.start();
-                osc.stop(ctx.currentTime + 0.25);
-              }, delay);
-            });
-          } catch {}
-          if (
-            "Notification" in window &&
-            Notification.permission === "granted"
-          ) {
-            new Notification(`💵 DINHEIRO - ${p.nome} - R$ ${p.total}`, {
-              body: `Troco para R$ ${p.trocoPara} | ${p.endereco?.slice(0, 40)}`,
-              requireInteraction: true,
-            });
-          }
-        } else {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          Notifications.scheduleNotificationAsync({
-            content: {
-              title: `💵 ${p.nome} - R$ ${p.total}`,
-              body: `Troco p/ R$ ${p.trocoPara} - Toque pra confirmar`,
-              sound: true,
-            },
-            trigger: null,
-          });
-        }
-      }
-    });
   }, [pedidos, autorizado]);
 
   useEffect(() => {
@@ -344,6 +299,7 @@ export default function Admin() {
       setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
   }, [autorizado]);
+
   useEffect(() => {
     if (!autorizado) return;
     return onSnapshot(doc(db, "config", "loja"), (s) => {
@@ -354,18 +310,13 @@ export default function Admin() {
           ...data,
           tempoEntrega: data.tempoEntrega || data.tempoMedio || p.tempoEntrega,
           tempoRetirada: data.tempoRetirada || p.tempoRetirada,
+          modoAutomatico: data.modoAutomatico ?? p.modoAutomatico,
+          horarioAbre: data.horarioAbre || p.horarioAbre,
+          horarioFecha: data.horarioFecha || p.horarioFecha,
+          diasAbertos: data.diasAbertos || p.diasAbertos,
         }));
       }
     });
-  }, [autorizado]);
-  useEffect(() => {
-    if (!autorizado) return;
-    return onSnapshot(
-      query(collection(db, "clientes"), orderBy("ultimoPedido", "desc")),
-      (s) => {
-        setClientes(s.docs.map((d) => ({ id: d.id, ...d.data() })));
-      },
-    );
   }, [autorizado]);
 
   const abrirWhatsApp = (p) => {
@@ -412,39 +363,6 @@ export default function Admin() {
     }
   };
 
-  const exportarClientes = () => {
-    if (clientes.length === 0) {
-      Alert.alert("Nenhum cliente ainda");
-      return;
-    }
-    let csv = "NOME,WHATSAPP,ACEITA_PROMO,ULTIMO_PEDIDO\n";
-    clientes.forEach((c) => {
-      const data = c.ultimoPedido?.toDate
-        ? c.ultimoPedido.toDate().toLocaleDateString("pt-BR")
-        : "";
-      csv +=
-        '"' +
-        (c.nome || "").replace(/"/g, "") +
-        '","' +
-        (c.whatsapp || "") +
-        '","' +
-        (c.aceitaPromo ? "SIM" : "NAO") +
-        '","' +
-        data +
-        '"\n';
-    });
-    if (Platform.OS === "web") {
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download =
-        "clientes-acaraje-" + new Date().toISOString().slice(0, 10) + ".csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-  };
-
   const pedidosFiltrados = pedidos.filter((p) => {
     const isPagoAuto =
       p.pago === true ||
@@ -464,77 +382,11 @@ export default function Admin() {
   });
 
   const apagarPedido = async (id) => {
-    try {
-      const confirma =
-        Platform.OS === "web" ? window.confirm("Apagar esse pedido?") : true;
-      if (Platform.OS !== "web") {
-        Alert.alert("Apagar?", "Apagar esse pedido?", [
-          { text: "Cancelar", style: "cancel" },
-          {
-            text: "Apagar",
-            style: "destructive",
-            onPress: async () => {
-              await deleteDoc(doc(db, "pedidos", id));
-            },
-          },
-        ]);
-        return;
-      }
-      if (!confirma) return;
+    if (Platform.OS === "web" ? window.confirm("Apagar esse pedido?") : true) {
       await deleteDoc(doc(db, "pedidos", id));
-    } catch (e) {
-      alert("Erro ao apagar: " + e.message);
     }
   };
-  const apagarTodos = async () => {
-    try {
-      const confirma =
-        Platform.OS === "web"
-          ? window.confirm("APAGAR TODO HISTÓRICO DE TESTES?")
-          : true;
-      if (Platform.OS !== "web") {
-        Alert.alert("APAGAR TUDO?", "Apagar TODOS?", [
-          { text: "Cancelar", style: "cancel" },
-          {
-            text: "APAGAR TUDO",
-            style: "destructive",
-            onPress: async () => {
-              const snap = await getDocs(collection(db, "pedidos"));
-              for (const d of snap.docs)
-                await deleteDoc(doc(db, "pedidos", d.id));
-            },
-          },
-        ]);
-        return;
-      }
-      if (!confirma) return;
-      const snap = await getDocs(collection(db, "pedidos"));
-      for (const d of snap.docs) await deleteDoc(doc(db, "pedidos", d.id));
-      alert("Histórico limpo! (" + snap.size + " pedidos)");
-    } catch (e) {
-      alert("Erro ao apagar tudo: " + e.message);
-    }
-  };
-  const corrigirTodoEstoque = async () => {
-    if (
-      Platform.OS === "web" &&
-      !window.confirm(
-        "Colocar 50 de estoque em TODOS os produtos que estão SEM ESTOQUE?",
-      )
-    )
-      return;
-    const snap = await getDocs(collection(db, "produtos"));
-    for (const d of snap.docs) {
-      const data = d.data();
-      if (!data.disponivel || (data.estoque || 0) <= 0) {
-        await updateDoc(doc(db, "produtos", d.id), {
-          estoque: 50,
-          disponivel: true,
-        });
-      }
-    }
-    alert("Pronto! Todo mundo com estoque 50 agora!");
-  };
+
   const uploadToCloudinary = async (uri) => {
     setUploading(true);
     const formData = new FormData();
@@ -549,7 +401,7 @@ export default function Admin() {
       if (data.secure_url) {
         if (editando) setEditando({ ...editando, imagemURL: data.secure_url });
         else setImageUrl(data.secure_url);
-      } else Alert.alert("Erro no upload", JSON.stringify(data));
+      }
     } catch (e) {
       Alert.alert("Erro", e.message);
     } finally {
@@ -597,6 +449,17 @@ export default function Admin() {
     setEditModal(false);
     setEditando(null);
   };
+
+  const toggleLoja = async () => {
+    const novoStatus = !config.aberto;
+    await setDoc(
+      doc(db, "config", "loja"),
+      { aberto: novoStatus },
+      { merge: true },
+    );
+    setConfig({ ...config, aberto: novoStatus });
+  };
+
   const salvarConfig = async () => {
     await setDoc(
       doc(db, "config", "loja"),
@@ -606,11 +469,16 @@ export default function Admin() {
         tempoEntrega: config.tempoEntrega,
         tempoRetirada: config.tempoRetirada,
         aberto: config.aberto,
+        modoAutomatico: config.modoAutomatico,
+        horarioAbre: config.horarioAbre,
+        horarioFecha: config.horarioFecha,
+        diasAbertos: config.diasAbertos,
       },
       { merge: true },
     );
-    window.alert("✅ SALVO!");
+    alert("✅ SALVO!");
   };
+
   const marcarPago = async (p) => {
     await updateDoc(doc(db, "pedidos", p.id), { pago: true, status: "pago" });
   };
@@ -804,27 +672,6 @@ export default function Admin() {
                 fontWeight: "900",
               }}
             />
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
-              {[10, 30, 50, 100].map((v) => (
-                <TouchableOpacity
-                  key={v}
-                  onPress={() => setEditando({ ...editando, estoque: v })}
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#333",
-                    padding: 8,
-                    borderRadius: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{ color: "#fff", fontSize: 12, fontWeight: "900" }}
-                  >
-                    {v}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
             <TouchableOpacity
               onPress={salvarEdicao}
               style={{
@@ -875,7 +722,6 @@ export default function Admin() {
             ADMIN - ACARAJÉ DA BENÇÃO
           </Text>
 
-          {/* ABAS CORRIGIDAS - CONTRASTE FORTE */}
           <View
             style={{
               flexDirection: "row",
@@ -953,382 +799,290 @@ export default function Admin() {
           </View>
 
           {aba === "pedidos" && (
-            <View>
-              <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
-                {[
-                  { id: "todos", lb: "TODOS" },
-                  { id: "dinheiro", lb: "💵 DINHEIRO" },
-                  { id: "novo", lb: "A PAGAR" },
-                  { id: "pago", lb: "PAGOS" },
-                  { id: "entregue", lb: "ENTREGUES" },
-                ].map((f) => (
-                  <TouchableOpacity
-                    key={f.id}
-                    onPress={() => setFiltro(f.id)}
+            <View style={{ gap: 12 }}>
+              {pedidosFiltrados.map((p) => {
+                const isEntrega = p.tipoEntrega !== "retirada";
+                const isAguardandoDinheiro =
+                  p.status === "aguardando_confirmacao" &&
+                  p.formaPagamento === "DINHEIRO";
+                const isPagoAuto =
+                  p.pago === true ||
+                  p.status === "pago" ||
+                  p.status === "confirmado" ||
+                  p.statusPagamento === "approved" ||
+                  p.statusPagamento === "pago";
+                const isEntregue = p.status === "entregue";
+                const hora = p.criadoEm?.toDate
+                  ? p.criadoEm.toDate().toLocaleTimeString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "";
+                return (
+                  <View
+                    key={p.id}
                     style={{
-                      flex: 1,
-                      padding: 9,
-                      borderRadius: 20,
-                      backgroundColor:
-                        filtro === f.id
-                          ? f.id === "dinheiro"
+                      backgroundColor: isAguardandoDinheiro
+                        ? "#332200"
+                        : isEntregue
+                          ? "#111"
+                          : isPagoAuto
+                            ? "#112911"
+                            : "#1a1a1a",
+                      padding: 14,
+                      borderRadius: 14,
+                      borderWidth: 2,
+                      borderColor: isAguardandoDinheiro
+                        ? "#FFAA00"
+                        : isEntregue
+                          ? "#333"
+                          : isPagoAuto
                             ? "#00C851"
-                            : "#D4AF37"
-                          : "#222",
-                      borderWidth: filtro === f.id ? 0 : 1,
-                      borderColor: "#555",
-                      alignItems: "center",
+                            : "#444",
                     }}
                   >
                     <Text
                       style={{
-                        fontSize: 9,
+                        color: isEntrega ? "#D4AF37" : "#00C851",
                         fontWeight: "900",
-                        color:
-                          filtro === f.id
-                            ? f.id === "dinheiro"
-                              ? "#fff"
-                              : "#000"
-                            : "#fff",
+                        fontSize: 12,
                       }}
                     >
-                      {f.lb}
+                      {isEntrega ? "🛵 ENTREGA" : "🟢 RETIRADA"} • {hora}
                     </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={{ gap: 12 }}>
-                {pedidosFiltrados.map((p) => {
-                  const isEntrega = p.tipoEntrega !== "retirada";
-                  const isAguardandoDinheiro =
-                    p.status === "aguardando_confirmacao" &&
-                    p.formaPagamento === "DINHEIRO";
-                  const isPagoAuto =
-                    p.pago === true ||
-                    p.status === "pago" ||
-                    p.status === "confirmado" ||
-                    p.statusPagamento === "approved" ||
-                    p.statusPagamento === "pago";
-                  const isEntregue = p.status === "entregue";
-                  const hora = p.criadoEm?.toDate
-                    ? p.criadoEm.toDate().toLocaleTimeString("pt-BR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "";
-                  return (
-                    <View
-                      key={p.id}
+                    <Text
                       style={{
-                        backgroundColor: isAguardandoDinheiro
-                          ? "#332200"
-                          : isEntregue
-                            ? "#111"
-                            : isPagoAuto
-                              ? "#112911"
-                              : "#1a1a1a",
-                        padding: 14,
-                        borderRadius: 14,
-                        borderWidth: 2,
-                        borderColor: isAguardandoDinheiro
-                          ? "#FFAA00"
-                          : isEntregue
-                            ? "#333"
-                            : isPagoAuto
-                              ? "#00C851"
-                              : "#444",
+                        color: "#fff",
+                        fontWeight: "900",
+                        fontSize: 16,
+                        marginTop: 8,
                       }}
                     >
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                        }}
-                      >
-                        <Text
+                      {p.nome} • R$ {p.total}
+                    </Text>
+                    <Text
+                      style={{
+                        color: "#ddd",
+                        marginTop: 6,
+                        fontSize: 13,
+                        backgroundColor: "#000",
+                        padding: 8,
+                        borderRadius: 8,
+                      }}
+                    >
+                      {montarResumoDetalhado(p)}
+                    </Text>
+                    <View
+                      style={{ flexDirection: "row", gap: 8, marginTop: 12 }}
+                    >
+                      {!isEntregue && (
+                        <TouchableOpacity
+                          onPress={() => marcarEntregue(p)}
                           style={{
-                            color: isAguardandoDinheiro
-                              ? "#FFAA00"
-                              : isEntrega
-                                ? "#D4AF37"
-                                : "#00C851",
-                            fontWeight: "900",
-                            fontSize: 12,
-                          }}
-                        >
-                          {isAguardandoDinheiro
-                            ? "💵 DINHEIRO - CONFIRMAR"
-                            : isEntrega
-                              ? "🛵 ENTREGA"
-                              : "🟢 RETIRADA"}{" "}
-                          • {hora} {p.impresso ? "🖨️" : ""}
-                        </Text>
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            gap: 6,
+                            flex: 1,
+                            backgroundColor: isPagoAuto ? "#D4AF37" : "#333",
+                            padding: 11,
+                            borderRadius: 10,
                             alignItems: "center",
                           }}
                         >
-                          <View
-                            style={{
-                              backgroundColor: isAguardandoDinheiro
-                                ? "#FFAA00"
-                                : isEntregue
-                                  ? "#333"
-                                  : isPagoAuto
-                                    ? "#00C851"
-                                    : "#442200",
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                              borderRadius: 12,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: isAguardandoDinheiro
-                                  ? "#000"
-                                  : isEntregue
-                                    ? "#aaa"
-                                    : isPagoAuto
-                                      ? "#fff"
-                                      : "#ffaa00",
-                                fontWeight: "900",
-                                fontSize: 9,
-                              }}
-                            >
-                              {isAguardandoDinheiro
-                                ? "⚠️ AGUARDANDO"
-                                : isEntregue
-                                  ? "ENTREGUE"
-                                  : isPagoAuto
-                                    ? "✓ PAGO"
-                                    : "A PAGAR"}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => apagarPedido(p.id)}
-                            style={{
-                              backgroundColor: "#330000",
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                              borderRadius: 12,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: "red",
-                                fontSize: 10,
-                                fontWeight: "900",
-                              }}
-                            >
-                              X
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      <Text
+                          <Text style={{ fontWeight: "900", fontSize: 12 }}>
+                            📦 ENTREGUE
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => imprimirPedidoTermica(p)}
                         style={{
-                          color: "#fff",
-                          fontWeight: "900",
-                          fontSize: 16,
-                          marginTop: 8,
+                          backgroundColor: "#fff",
+                          padding: 11,
+                          borderRadius: 10,
+                          alignItems: "center",
                         }}
                       >
-                        {p.nome || "Cliente"} • R$ {p.total}
-                      </Text>
-                      {isAguardandoDinheiro && (
-                        <View
-                          style={{
-                            backgroundColor: "#000",
-                            padding: 10,
-                            borderRadius: 8,
-                            marginTop: 8,
-                            borderWidth: 1,
-                            borderColor: "#FFAA00",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: "#FFAA00",
-                              fontWeight: "900",
-                              fontSize: 14,
-                            }}
-                          >
-                            💰 TROCO PARA R$ {p.trocoPara} | TROCO: R${" "}
-                            {Number(p.troco || 0).toFixed(2)}
-                          </Text>
-                          <Text
-                            style={{
-                              color: "#fff",
-                              fontSize: 11,
-                              marginTop: 4,
-                            }}
-                          >
-                            ⚠️ Não foi pra cozinha ainda. Confirme no WhatsApp!
-                          </Text>
-                        </View>
-                      )}
-                      <Text
+                        <Text style={{ fontWeight: "900", fontSize: 12 }}>
+                          🖨️
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => apagarPedido(p.id)}
                         style={{
-                          color: "#ddd",
-                          marginTop: 6,
-                          fontSize: 13,
-                          lineHeight: 19,
-                          backgroundColor: "#000",
-                          padding: 8,
-                          borderRadius: 8,
+                          backgroundColor: "#330000",
+                          padding: 11,
+                          borderRadius: 10,
                         }}
                       >
-                        {montarResumoDetalhado(p)}
-                      </Text>
-                      <View style={{ marginTop: 8, gap: 3 }}>
-                        <Text style={{ color: "#aaa", fontSize: 12 }}>
-                          {isEntrega ? "📍 " + p.endereco : "📍 Retira na loja"}
+                        <Text style={{ color: "red", fontWeight: "900" }}>
+                          X
                         </Text>
-                        <Text style={{ color: "#aaa", fontSize: 12 }}>
-                          📱 {p.telefone || p.whatsapp} • 💳{" "}
-                          {p.formaPagamento || "APP"}{" "}
-                          {p.formaPagamento === "DINHEIRO"
-                            ? `(Troco p/ ${p.trocoPara})`
-                            : ""}
-                        </Text>
-                      </View>
-                      {isAguardandoDinheiro ? (
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            gap: 8,
-                            marginTop: 12,
-                          }}
-                        >
-                          <TouchableOpacity
-                            onPress={() => abrirWhatsApp(p)}
-                            style={{
-                              flex: 1,
-                              backgroundColor: "#25D366",
-                              padding: 14,
-                              borderRadius: 10,
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: "#fff",
-                                fontWeight: "900",
-                                fontSize: 12,
-                              }}
-                            >
-                              💬 WHATSAPP
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => confirmarDinheiro(p)}
-                            style={{
-                              flex: 1.5,
-                              backgroundColor: "#00C851",
-                              padding: 14,
-                              borderRadius: 10,
-                              alignItems: "center",
-                              borderWidth: 2,
-                              borderColor: "#fff",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: "#fff",
-                                fontWeight: "900",
-                                fontSize: 12,
-                              }}
-                            >
-                              ✅ CONFIRMAR + COZINHA
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            gap: 8,
-                            marginTop: 12,
-                          }}
-                        >
-                          {!isPagoAuto && (
-                            <TouchableOpacity
-                              onPress={() => marcarPago(p)}
-                              style={{
-                                flex: 1,
-                                backgroundColor: "#222",
-                                borderWidth: 1,
-                                borderColor: "#00C851",
-                                padding: 11,
-                                borderRadius: 10,
-                                alignItems: "center",
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  color: "#00C851",
-                                  fontWeight: "900",
-                                  fontSize: 12,
-                                }}
-                              >
-                                MARCAR PAGO + IMPRIMIR
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                          {!isEntregue && (
-                            <TouchableOpacity
-                              onPress={() => marcarEntregue(p)}
-                              style={{
-                                flex: 1,
-                                backgroundColor: isPagoAuto
-                                  ? "#D4AF37"
-                                  : "#333",
-                                padding: 11,
-                                borderRadius: 10,
-                                alignItems: "center",
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  fontWeight: "900",
-                                  fontSize: 12,
-                                  color: isPagoAuto ? "#000" : "#fff",
-                                }}
-                              >
-                                📦 ENTREGUE
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                          <TouchableOpacity
-                            onPress={() => imprimirPedidoTermica(p)}
-                            style={{
-                              backgroundColor: "#fff",
-                              padding: 11,
-                              borderRadius: 10,
-                              alignItems: "center",
-                            }}
-                          >
-                            <Text style={{ fontWeight: "900", fontSize: 12 }}>
-                              🖨️
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                      </TouchableOpacity>
                     </View>
-                  );
-                })}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {aba === "produtos" && (
+            <View
+              style={{
+                backgroundColor: "#1a1a1a",
+                padding: 14,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#333",
+              }}
+            >
+              <Text
+                style={{
+                  color: "#D4AF37",
+                  fontWeight: "900",
+                  marginBottom: 10,
+                }}
+              >
+                CADASTRAR PRODUTO
+              </Text>
+              <TouchableOpacity
+                onPress={pickImage}
+                style={{
+                  backgroundColor: "#222",
+                  height: 120,
+                  borderRadius: 10,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginBottom: 10,
+                  borderWidth: 1,
+                  borderColor: "#333",
+                }}
+              >
+                {imageUrl ? (
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={{ width: "100%", height: "100%", borderRadius: 10 }}
+                  />
+                ) : (
+                  <Text style={{ color: "#888" }}>
+                    {uploading ? "ENVIANDO..." : "📷 FOTO"}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TextInput
+                placeholder="Nome"
+                placeholderTextColor="#666"
+                value={nome}
+                onChangeText={setNome}
+                style={{
+                  backgroundColor: "#000",
+                  color: "#fff",
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: "#333",
+                  marginBottom: 8,
+                }}
+              />
+              <TextInput
+                placeholder="Preço ex: 15.00"
+                placeholderTextColor="#666"
+                value={preco}
+                onChangeText={setPreco}
+                keyboardType="numeric"
+                style={{
+                  backgroundColor: "#000",
+                  color: "#fff",
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: "#333",
+                  marginBottom: 8,
+                }}
+              />
+              <TextInput
+                placeholder="Descrição"
+                placeholderTextColor="#666"
+                value={descricao}
+                onChangeText={setDescricao}
+                style={{
+                  backgroundColor: "#000",
+                  color: "#fff",
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: "#333",
+                  marginBottom: 8,
+                }}
+              />
+              <TextInput
+                placeholder="Estoque"
+                placeholderTextColor="#666"
+                value={estoque}
+                onChangeText={setEstoque}
+                keyboardType="numeric"
+                style={{
+                  backgroundColor: "#000",
+                  color: "#fff",
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: "#333",
+                  marginBottom: 10,
+                }}
+              />
+              <TouchableOpacity
+                onPress={salvarProduto}
+                style={{
+                  backgroundColor: "#D4AF37",
+                  padding: 14,
+                  borderRadius: 10,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontWeight: "900" }}>SALVAR PRODUTO</Text>
+              </TouchableOpacity>
+              <View style={{ marginTop: 20, gap: 8 }}>
+                {produtos.map((prod) => (
+                  <View
+                    key={prod.id}
+                    style={{
+                      backgroundColor: "#000",
+                      padding: 10,
+                      borderRadius: 8,
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ color: "#fff", flex: 1 }}>
+                      {prod.nome} - R$ {prod.preco} (Est: {prod.estoque})
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditando(prod);
+                        setEditModal(true);
+                      }}
+                      style={{
+                        backgroundColor: "#D4AF37",
+                        padding: 8,
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Text style={{ fontWeight: "900", fontSize: 10 }}>
+                        EDITAR
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
             </View>
           )}
-          {aba === "produtos" && (
-            <View>
+
+          {aba === "config" && (
+            <View style={{ gap: 16 }}>
+              {/* MODO */}
               <View
                 style={{
                   backgroundColor: "#1a1a1a",
-                  padding: 14,
+                  padding: 16,
                   borderRadius: 12,
                   borderWidth: 1,
                   borderColor: "#333",
@@ -1339,215 +1093,410 @@ export default function Admin() {
                     color: "#D4AF37",
                     fontWeight: "900",
                     marginBottom: 10,
+                    fontSize: 14,
                   }}
                 >
-                  CADASTRAR PRODUTO
+                  MODO DE FUNCIONAMENTO
                 </Text>
-                <TouchableOpacity
-                  onPress={pickImage}
-                  style={{
-                    backgroundColor: "#222",
-                    height: 120,
-                    borderRadius: 10,
-                    justifyContent: "center",
-                    alignItems: "center",
-                    marginBottom: 10,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                  }}
-                >
-                  {imageUrl ? (
-                    <Image
-                      source={{ uri: imageUrl }}
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await setDoc(
+                        doc(db, "config", "loja"),
+                        { modoAutomatico: false },
+                        { merge: true },
+                      );
+                      setConfig({ ...config, modoAutomatico: false });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: 14,
+                      borderRadius: 10,
+                      backgroundColor: !config.modoAutomatico
+                        ? "#D4AF37"
+                        : "#222",
+                      alignItems: "center",
+                      borderWidth: 2,
+                      borderColor: !config.modoAutomatico ? "#D4AF37" : "#555",
+                    }}
+                  >
+                    <Text
                       style={{
-                        width: "100%",
-                        height: "100%",
-                        borderRadius: 10,
+                        fontWeight: "900",
+                        color: !config.modoAutomatico ? "#000" : "#fff",
+                        fontSize: 11,
                       }}
-                    />
-                  ) : (
-                    <Text style={{ color: "#888" }}>
-                      {uploading ? "ENVIANDO..." : "📷 FOTO"}
+                    >
+                      🔘 MANUAL
                     </Text>
-                  )}
-                </TouchableOpacity>
-                <TextInput
-                  placeholder="Nome"
-                  placeholderTextColor="#666"
-                  value={nome}
-                  onChangeText={setNome}
+                    <Text
+                      style={{
+                        color: !config.modoAutomatico ? "#000" : "#888",
+                        fontSize: 9,
+                        marginTop: 2,
+                      }}
+                    >
+                      Você liga/desliga
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await setDoc(
+                        doc(db, "config", "loja"),
+                        { modoAutomatico: true },
+                        { merge: true },
+                      );
+                      setConfig({ ...config, modoAutomatico: true });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: 14,
+                      borderRadius: 10,
+                      backgroundColor: config.modoAutomatico
+                        ? "#00C851"
+                        : "#222",
+                      alignItems: "center",
+                      borderWidth: 2,
+                      borderColor: config.modoAutomatico ? "#00C851" : "#555",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontWeight: "900",
+                        color: config.modoAutomatico ? "#fff" : "#fff",
+                        fontSize: 11,
+                      }}
+                    >
+                      ⏰ AUTOMÁTICO
+                    </Text>
+                    <Text
+                      style={{
+                        color: config.modoAutomatico ? "#fff" : "#888",
+                        fontSize: 9,
+                        marginTop: 2,
+                      }}
+                    >
+                      Abre/fecha sozinha
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* BOTÃO MANUAL */}
+              {!config.modoAutomatico && (
+                <View
                   style={{
-                    backgroundColor: "#000",
-                    color: "#fff",
-                    padding: 12,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    marginBottom: 8,
-                  }}
-                />
-                <TextInput
-                  placeholder="Preço ex: 15.00"
-                  placeholderTextColor="#666"
-                  value={preco}
-                  onChangeText={setPreco}
-                  keyboardType="numeric"
-                  style={{
-                    backgroundColor: "#000",
-                    color: "#fff",
-                    padding: 12,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    marginBottom: 8,
-                  }}
-                />
-                <TextInput
-                  placeholder="Descrição"
-                  placeholderTextColor="#666"
-                  value={descricao}
-                  onChangeText={setDescricao}
-                  style={{
-                    backgroundColor: "#000",
-                    color: "#fff",
-                    padding: 12,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    marginBottom: 8,
-                  }}
-                />
-                <TextInput
-                  placeholder="Estoque"
-                  placeholderTextColor="#666"
-                  value={estoque}
-                  onChangeText={setEstoque}
-                  keyboardType="numeric"
-                  style={{
-                    backgroundColor: "#000",
-                    color: "#fff",
-                    padding: 12,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#333",
-                    marginBottom: 10,
-                  }}
-                />
-                <TouchableOpacity
-                  onPress={salvarProduto}
-                  style={{
-                    backgroundColor: "#D4AF37",
-                    padding: 14,
-                    borderRadius: 10,
+                    backgroundColor: config.aberto ? "#102a15" : "#2a1010",
+                    padding: 20,
+                    borderRadius: 16,
+                    borderWidth: 3,
+                    borderColor: config.aberto ? "#00C851" : "#ff4444",
                     alignItems: "center",
                   }}
                 >
-                  <Text style={{ fontWeight: "900" }}>SALVAR PRODUTO</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-          {aba === "config" && (
-            <View
-              style={{
-                backgroundColor: "#1a1a1a",
-                padding: 16,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: "#333",
-              }}
-            >
-              <Text
+                  <Text
+                    style={{
+                      color: config.aberto ? "#00C851" : "#ff4444",
+                      fontWeight: "900",
+                      fontSize: 22,
+                      marginBottom: 6,
+                    }}
+                  >
+                    {config.aberto ? "🟢 LOJA ABERTA" : "🔴 LOJA FECHADA"}
+                  </Text>
+                  <Text
+                    style={{
+                      color: "#aaa",
+                      fontSize: 11,
+                      marginBottom: 16,
+                      textAlign: "center",
+                    }}
+                  >
+                    {config.aberto
+                      ? "Clientes PODEM comprar agora"
+                      : "Clientes NÃO conseguem finalizar"}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={toggleLoja}
+                    style={{
+                      width: "100%",
+                      backgroundColor: config.aberto ? "#ff4444" : "#00C851",
+                      padding: 18,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      borderWidth: 2,
+                      borderColor: "#fff",
+                    }}
+                  >
+                    <Text
+                      style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}
+                    >
+                      {config.aberto
+                        ? "🔴 FECHAR LOJA AGORA"
+                        : "🟢 ABRIR LOJA AGORA"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* HORÁRIO AUTOMÁTICO */}
+              {config.modoAutomatico && (
+                <View
+                  style={{
+                    backgroundColor: "#1a1a1a",
+                    padding: 16,
+                    borderRadius: 12,
+                    borderWidth: 2,
+                    borderColor: "#00C851",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#00C851",
+                      fontWeight: "900",
+                      marginBottom: 12,
+                      fontSize: 14,
+                    }}
+                  >
+                    ⏰ CONFIGURAR HORÁRIO AUTOMÁTICO
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{ color: "#888", fontSize: 10, marginBottom: 4 }}
+                      >
+                        ABRE ÀS
+                      </Text>
+                      <TextInput
+                        value={config.horarioAbre}
+                        onChangeText={(t) =>
+                          setConfig({ ...config, horarioAbre: t })
+                        }
+                        placeholder="17:00"
+                        placeholderTextColor="#555"
+                        style={{
+                          backgroundColor: "#000",
+                          color: "#fff",
+                          padding: 14,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: "#00C851",
+                          textAlign: "center",
+                          fontWeight: "900",
+                          fontSize: 16,
+                        }}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{ color: "#888", fontSize: 10, marginBottom: 4 }}
+                      >
+                        FECHA ÀS
+                      </Text>
+                      <TextInput
+                        value={config.horarioFecha}
+                        onChangeText={(t) =>
+                          setConfig({ ...config, horarioFecha: t })
+                        }
+                        placeholder="22:00"
+                        placeholderTextColor="#555"
+                        style={{
+                          backgroundColor: "#000",
+                          color: "#fff",
+                          padding: 14,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: "#ff4444",
+                          textAlign: "center",
+                          fontWeight: "900",
+                          fontSize: 16,
+                        }}
+                      />
+                    </View>
+                  </View>
+                  <Text
+                    style={{
+                      color: "#888",
+                      fontSize: 11,
+                      marginTop: 16,
+                      marginBottom: 8,
+                      fontWeight: "700",
+                    }}
+                  >
+                    DIAS QUE ABRE (toque para ligar/desligar):
+                  </Text>
+                  <View
+                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+                  >
+                    {[
+                      { id: "segunda", lb: "SEG" },
+                      { id: "terca", lb: "TER" },
+                      { id: "quarta", lb: "QUA" },
+                      { id: "quinta", lb: "QUI" },
+                      { id: "sexta", lb: "SEX" },
+                      { id: "sabado", lb: "SÁB" },
+                      { id: "domingo", lb: "DOM" },
+                    ].map((dia) => {
+                      const ativo = (config.diasAbertos || []).includes(dia.id);
+                      return (
+                        <TouchableOpacity
+                          key={dia.id}
+                          onPress={() => {
+                            const lista = config.diasAbertos || [];
+                            const nova = ativo
+                              ? lista.filter((x) => x !== dia.id)
+                              : [...lista, dia.id];
+                            setConfig({ ...config, diasAbertos: nova });
+                          }}
+                          style={{
+                            padding: 12,
+                            borderRadius: 8,
+                            backgroundColor: ativo ? "#00C851" : "#222",
+                            borderWidth: 2,
+                            borderColor: ativo ? "#00C851" : "#444",
+                            minWidth: 48,
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: ativo ? "#fff" : "#888",
+                              fontWeight: "900",
+                              fontSize: 10,
+                            }}
+                          >
+                            {dia.lb}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <View
+                    style={{
+                      backgroundColor: "#000",
+                      padding: 10,
+                      borderRadius: 8,
+                      marginTop: 14,
+                      borderWidth: 1,
+                      borderColor: "#333",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#D4AF37",
+                        fontSize: 11,
+                        textAlign: "center",
+                      }}
+                    >
+                      📍 Horário de Brasília - Abre sozinha nos dias e horários
+                      acima
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              <View
                 style={{
-                  color: "#D4AF37",
-                  fontWeight: "900",
-                  marginBottom: 12,
-                  fontSize: 16,
-                }}
-              >
-                CONFIGURAÇÕES
-              </Text>
-              <Text style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>
-                Taxa de Entrega (R$)
-              </Text>
-              <TextInput
-                value={String(config.taxaEntrega)}
-                onChangeText={(t) =>
-                  setConfig({ ...config, taxaEntrega: Number(t) || 0 })
-                }
-                keyboardType="numeric"
-                style={{
-                  backgroundColor: "#000",
-                  color: "#fff",
-                  padding: 12,
-                  borderRadius: 8,
+                  backgroundColor: "#1a1a1a",
+                  padding: 16,
+                  borderRadius: 12,
                   borderWidth: 1,
                   borderColor: "#333",
-                  marginBottom: 16,
-                }}
-              />
-              <Text
-                style={{
-                  color: "#D4AF37",
-                  fontSize: 12,
-                  marginBottom: 4,
-                  fontWeight: "900",
                 }}
               >
-                ⏱️ TEMPO ENTREGA
-              </Text>
-              <TextInput
-                value={config.tempoEntrega}
-                onChangeText={(t) =>
-                  setConfig({ ...config, tempoEntrega: t, tempoMedio: t })
-                }
-                style={{
-                  backgroundColor: "#000",
-                  color: "#fff",
-                  padding: 12,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: "#D4AF37",
-                  marginBottom: 16,
-                }}
-              />
-              <Text
-                style={{
-                  color: "#00C851",
-                  fontSize: 12,
-                  marginBottom: 4,
-                  fontWeight: "900",
-                }}
-              >
-                ⏱️ TEMPO RETIRADA
-              </Text>
-              <TextInput
-                value={config.tempoRetirada}
-                onChangeText={(t) => setConfig({ ...config, tempoRetirada: t })}
-                style={{
-                  backgroundColor: "#000",
-                  color: "#fff",
-                  padding: 12,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: "#00C851",
-                  marginBottom: 16,
-                }}
-              />
-              <TouchableOpacity
-                onPress={salvarConfig}
-                style={{
-                  backgroundColor: "#D4AF37",
-                  padding: 16,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  marginTop: 10,
-                }}
-              >
-                <Text style={{ fontWeight: "900", fontSize: 14 }}>
-                  💾 SALVAR
+                <Text
+                  style={{
+                    color: "#D4AF37",
+                    fontWeight: "900",
+                    marginBottom: 12,
+                    fontSize: 14,
+                  }}
+                >
+                  TAXAS E TEMPOS
                 </Text>
-              </TouchableOpacity>
+                <Text style={{ color: "#888", fontSize: 10, marginBottom: 4 }}>
+                  Taxa de Entrega (R$)
+                </Text>
+                <TextInput
+                  value={String(config.taxaEntrega)}
+                  onChangeText={(t) =>
+                    setConfig({ ...config, taxaEntrega: Number(t) || 0 })
+                  }
+                  keyboardType="numeric"
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#333",
+                    marginBottom: 12,
+                  }}
+                />
+                <Text
+                  style={{
+                    color: "#D4AF37",
+                    fontSize: 10,
+                    marginBottom: 4,
+                    fontWeight: "900",
+                  }}
+                >
+                  ⏱️ TEMPO ENTREGA
+                </Text>
+                <TextInput
+                  value={config.tempoEntrega}
+                  onChangeText={(t) =>
+                    setConfig({ ...config, tempoEntrega: t, tempoMedio: t })
+                  }
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#D4AF37",
+                    marginBottom: 12,
+                  }}
+                />
+                <Text
+                  style={{
+                    color: "#00C851",
+                    fontSize: 10,
+                    marginBottom: 4,
+                    fontWeight: "900",
+                  }}
+                >
+                  ⏱️ TEMPO RETIRADA
+                </Text>
+                <TextInput
+                  value={config.tempoRetirada}
+                  onChangeText={(t) =>
+                    setConfig({ ...config, tempoRetirada: t })
+                  }
+                  style={{
+                    backgroundColor: "#000",
+                    color: "#fff",
+                    padding: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#00C851",
+                    marginBottom: 16,
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={salvarConfig}
+                  style={{
+                    backgroundColor: "#D4AF37",
+                    padding: 16,
+                    borderRadius: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ fontWeight: "900", fontSize: 14 }}>
+                    💾 SALVAR TUDO
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </ScrollView>
