@@ -59,7 +59,8 @@ function isLojaAbertaAgora(config: ConfigLoja | null) {
 }
 
 export default function Carrinho() {
-  const { carrinho } = useCarrinho();
+  const { carrinho, removerDoCarrinho, removerItem, limparCarrinho } =
+    useCarrinho() as any;
   const [configLoja, setConfigLoja] = useState<ConfigLoja | null>(null);
   const router = useRouter();
   const lojaAberta = isLojaAbertaAgora(configLoja);
@@ -90,6 +91,26 @@ export default function Carrinho() {
 
   const getQtd = (item: any) =>
     item.quantidade ?? item.qtd ?? item.quantity ?? 1;
+
+  function handleRemover(index: number) {
+    if (removerDoCarrinho) return removerDoCarrinho(index);
+    if (removerItem) return removerItem(index);
+    if (limparCarrinho && carrinho.length === 1) return limparCarrinho();
+    // fallback se não tiver função
+    Alert.alert("Remover?", "Deseja remover este item?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Remover",
+        style: "destructive",
+        onPress: () => {
+          // tenta remover local se não tiver função no context
+          carrinho.splice(index, 1);
+          router.replace("/(tabs)/carrinho");
+        },
+      },
+    ]);
+  }
+
   const subtotal = carrinho.reduce(
     (acc: number, item: any) => acc + item.preco * getQtd(item),
     0,
@@ -124,7 +145,7 @@ export default function Carrinho() {
           </View>
         </View>
       )}
-      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 180 }}>
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 200 }}>
         {carrinho.length === 0 ? (
           <Text style={{ color: "#888", textAlign: "center", marginTop: 50 }}>
             Carrinho vazio
@@ -135,70 +156,68 @@ export default function Carrinho() {
             const adicionais = item.adicionais || item.extras || [];
             const obs = item.obs || item.observacao || "";
             return (
-              <View key={item.id + idx} style={styles.item}>
+              <View key={idx} style={styles.card}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.nome}>
-                    {qtd}x {item.nome?.toUpperCase()}
-                  </Text>
-                  {adicionais.length > 0 && (
-                    <View style={{ marginTop: 6 }}>
-                      {adicionais.map((ad: any, i: number) => {
-                        const nomeAd =
-                          typeof ad === "string"
-                            ? ad
-                            : ad.nome || ad.title || "";
-                        const precoAd = ad.preco
-                          ? ` (+ R$ ${Number(ad.preco).toFixed(2).replace(".", ",")})`
-                          : "";
-                        return (
-                          <Text key={i} style={styles.adicional}>
-                            + {String(nomeAd).toUpperCase()}
-                            {precoAd}
-                          </Text>
-                        );
-                      })}
-                    </View>
-                  )}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Text style={styles.nomeCard}>
+                      {qtd}x {String(item.nome).toUpperCase()}
+                    </Text>
+                    <Text style={styles.precoCard}>
+                      R$ {(item.preco * qtd).toFixed(2).replace(".", ",")}
+                    </Text>
+                  </View>
+                  {adicionais.length > 0 &&
+                    adicionais.map((ad: any, i: number) => {
+                      const txt =
+                        typeof ad === "string" ? ad : ad.nome || ad.title || "";
+                      const qtdAd = ad.quantidade ? `${ad.quantidade} ` : "";
+                      return (
+                        <Text key={i} style={styles.adicional}>
+                          + {qtdAd}
+                          {String(txt).toUpperCase()}
+                        </Text>
+                      );
+                    })}
                   {obs ? (
                     <Text style={styles.obs}>
                       OBS: {String(obs).toUpperCase()}
                     </Text>
                   ) : null}
                 </View>
-                <Text style={styles.preco}>
-                  R$ {(item.preco * qtd).toFixed(2).replace(".", ",")}
-                </Text>
+                <TouchableOpacity
+                  onPress={() => handleRemover(idx)}
+                  style={styles.btnExcluir}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#ff5555" />
+                </TouchableOpacity>
               </View>
             );
           })
         )}
       </ScrollView>
+
       {carrinho.length > 0 && (
         <View style={styles.footer}>
-          <View style={styles.linhaResumo}>
-            <Text style={styles.labelResumo}>Subtotal</Text>
-            <Text style={styles.valorResumo}>
+          <View style={styles.linha}>
+            <Text style={styles.label}>Subtotal</Text>
+            <Text style={styles.valor}>
               R$ {subtotal.toFixed(2).replace(".", ",")}
             </Text>
           </View>
-          <View style={styles.linhaResumo}>
-            <Text style={styles.labelResumo}>Taxa de entrega</Text>
-            <Text style={styles.valorResumo}>
+          <View style={styles.linha}>
+            <Text style={styles.label}>Taxa de entrega</Text>
+            <Text style={styles.valor}>
               R$ {frete.toFixed(2).replace(".", ",")}
             </Text>
           </View>
-          <View
-            style={[
-              styles.linhaResumo,
-              {
-                borderTopWidth: 1,
-                borderColor: "#222",
-                paddingTop: 10,
-                marginTop: 6,
-              },
-            ]}
-          >
-            <Text style={styles.total}>Total</Text>
+          <View style={styles.divisor} />
+          <View style={styles.linhaTotal}>
+            <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValor}>
               R$ {total.toFixed(2).replace(".", ",")}
             </Text>
@@ -207,7 +226,7 @@ export default function Carrinho() {
             style={[styles.btnFinalizar, !lojaAberta && styles.btnFechado]}
             onPress={handleFinalizar}
           >
-            <Text style={[styles.btnTxt, !lojaAberta && { color: "#888" }]}>
+            <Text style={styles.btnTxt}>
               {lojaAberta ? "FINALIZAR PEDIDO" : "⛔ LOJA FECHADA"}
             </Text>
           </TouchableOpacity>
@@ -233,25 +252,36 @@ const styles = StyleSheet.create({
   },
   bannerTitulo: { color: "#fff", fontWeight: "900", fontSize: 12 },
   bannerSub: { color: "#ffdddd", fontSize: 10, marginTop: 2 },
-  item: {
-    backgroundColor: "#1a1a1a",
+  card: {
+    backgroundColor: "#1E1E1E",
     padding: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 10,
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "flex-start",
     borderWidth: 1,
-    borderColor: "#222",
+    borderColor: "#2a2a2a",
   },
-  nome: { color: "#fff", fontWeight: "900", fontSize: 14 },
+  nomeCard: { color: "#fff", fontWeight: "900", fontSize: 14, flex: 1 },
+  precoCard: {
+    color: "#D4AF37",
+    fontWeight: "900",
+    fontSize: 14,
+    marginLeft: 8,
+  },
   adicional: {
     color: "#D4AF37",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
-    marginTop: 2,
+    marginTop: 3,
   },
-  obs: { color: "#aaa", fontSize: 11, marginTop: 6, fontStyle: "italic" },
-  preco: { color: "#D4AF37", fontWeight: "900", marginLeft: 10 },
+  obs: { color: "#9ca3af", fontSize: 11, marginTop: 6, fontStyle: "italic" },
+  btnExcluir: {
+    marginLeft: 12,
+    padding: 6,
+    backgroundColor: "#2a1a1a",
+    borderRadius: 8,
+  },
   footer: {
     position: "absolute",
     bottom: 0,
@@ -262,21 +292,27 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "#222",
   },
-  linhaResumo: {
+  linha: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 6,
   },
-  labelResumo: { color: "#888", fontSize: 13 },
-  valorResumo: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  total: { color: "#fff", fontSize: 18, fontWeight: "900" },
-  totalValor: { color: "#D4AF37", fontSize: 18, fontWeight: "900" },
+  label: { color: "#9ca3af", fontSize: 14 },
+  valor: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  divisor: { height: 1, backgroundColor: "#222", marginVertical: 8 },
+  linhaTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  totalLabel: { color: "#fff", fontSize: 22, fontWeight: "900" },
+  totalValor: { color: "#D4AF37", fontSize: 22, fontWeight: "900" },
   btnFinalizar: {
     backgroundColor: "#D4AF37",
-    padding: 16,
-    borderRadius: 12,
+    padding: 18,
+    borderRadius: 14,
     alignItems: "center",
-    marginTop: 12,
+    marginTop: 14,
   },
   btnFechado: { backgroundColor: "#333" },
   btnTxt: { color: "#000", fontWeight: "900", fontSize: 16 },
