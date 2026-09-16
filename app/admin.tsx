@@ -75,9 +75,8 @@ export default function Admin() {
         typeof window !== "undefined" &&
         "Notification" in window &&
         Notification.permission === "default"
-      ) {
+      )
         Notification.requestPermission().catch(() => {});
-      }
     } else {
       Alert.alert("Senha errada");
       setSenhaDigitada("");
@@ -86,42 +85,33 @@ export default function Admin() {
 
   function montarResumoDetalhado(pedido) {
     if (pedido.itens && pedido.itens.length > 0) {
-      const resumoMontado = pedido.itens
+      const r = pedido.itens
         .map((i) => {
           const qtd = i.qtd || i.quantidade || 1;
           const nomeP = (i.nome || i.title || "ITEM").toUpperCase();
           let linha = qtd + "x " + nomeP;
           const extrasSet = new Set();
-          if (Array.isArray(i.adicionais) && i.adicionais.length) {
+          if (Array.isArray(i.adicionais) && i.adicionais.length)
             i.adicionais.forEach((c) => {
-              const t =
-                typeof c === "string"
-                  ? c
-                  : c.nome || c.nomeComplemento || c.title || c.label || "";
-              if (t && String(t).trim())
-                extrasSet.add(String(t).trim().toUpperCase());
+              const t = typeof c === "string" ? c : c.nome || "";
+              if (t) extrasSet.add(String(t).trim().toUpperCase());
             });
-          }
-          if (i.obs && typeof i.obs === "string" && i.obs.trim() !== "") {
+          if (i.obs && typeof i.obs === "string" && i.obs.trim() !== "")
             i.obs
               .split(",")
               .map((s) => s.trim())
               .filter(Boolean)
-              .forEach((p) => {
-                extrasSet.add(p.toUpperCase());
-              });
-          }
+              .forEach((p) => extrasSet.add(p.toUpperCase()));
           if (i.observacao) extrasSet.add("OBS: " + i.observacao.toUpperCase());
           const extras = Array.from(extrasSet).map((e) => " + " + e);
           if (extras.length > 0) return linha + "\n" + extras.join("\n");
           return linha;
         })
         .join("\n\n");
-      if (resumoMontado && resumoMontado.length > 3) return resumoMontado;
+      if (r && r.length > 3) return r;
     }
-    if (pedido.resumoDetalhado && pedido.resumoDetalhado.length > 5)
-      return pedido.resumoDetalhado;
-    if (pedido.resumo && pedido.resumo.length > 5) return pedido.resumo;
+    if (pedido.resumoDetalhado) return pedido.resumoDetalhado;
+    if (pedido.resumo) return pedido.resumo;
     return "Sem detalhes";
   }
 
@@ -133,49 +123,6 @@ export default function Admin() {
     const nomeCliente = pedido.nome || pedido.cliente || "Sem nome";
     const data = new Date().toLocaleString("pt-BR");
     const idCurto = pedido.id.slice(-6).toUpperCase();
-    const resumoComPreco =
-      pedido.itens && pedido.itens.length > 0
-        ? pedido.itens
-            .map((i) => {
-              const qtd = Number(i.qtd || i.quantidade || 1);
-              const nomeP = (i.nome || i.title || "ITEM").toUpperCase();
-              const precoUnit = Number(i.preco || i.precoUnit || i.valor || 0);
-              let linha =
-                qtd +
-                "x " +
-                nomeP +
-                " - R$ " +
-                precoUnit.toFixed(2).replace(".", ",") +
-                " = R$ " +
-                (precoUnit * qtd).toFixed(2).replace(".", ",");
-              const extrasSet = new Set();
-              if (Array.isArray(i.adicionais) && i.adicionais.length) {
-                i.adicionais.forEach((c) => {
-                  const t =
-                    typeof c === "string"
-                      ? c
-                      : c.nome || c.nomeComplemento || c.title || c.label || "";
-                  if (t && String(t).trim())
-                    extrasSet.add(String(t).trim().toUpperCase());
-                });
-              }
-              if (i.obs && typeof i.obs === "string" && i.obs.trim() !== "") {
-                i.obs
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-                  .forEach((p) => {
-                    extrasSet.add(p.toUpperCase());
-                  });
-              }
-              if (i.observacao)
-                extrasSet.add("OBS: " + i.observacao.toUpperCase());
-              const extras = Array.from(extrasSet).map((e) => " + " + e);
-              if (extras.length > 0) return linha + "\n" + extras.join("\n");
-              return linha;
-            })
-            .join("\n\n")
-        : montarResumoDetalhado(pedido);
     const isRetirada =
       pedido.tipoEntrega === "retirada" ||
       String(pedido.endereco || "")
@@ -191,78 +138,65 @@ export default function Admin() {
             8,
         ) || 0;
     let subtotalCalc = 0;
-    if (pedido.itens && pedido.itens.length > 0) {
-      pedido.itens.forEach((i) => {
-        const qtd = Number(i.qtd || i.quantidade || 1);
-        const precoU = Number(i.preco || i.precoUnit || i.valor || 0);
-        subtotalCalc += precoU * qtd;
-      });
+    if (pedido.itens?.length) {
+      pedido.itens.forEach(
+        (i) =>
+          (subtotalCalc +=
+            Number(i.preco || i.precoUnit || i.valor || 0) *
+            Number(i.qtd || i.quantidade || 1)),
+      );
     } else {
       subtotalCalc =
         Number(
           String(pedido.subtotal || pedido.total || "0")
             .replace(",", ".")
-            .replace("R$", "")
-            .trim(),
+            .replace("R$", ""),
         ) || 0;
     }
     const totalNum = subtotalCalc + frete;
-    const totalExibir = "R$ " + totalNum.toFixed(2).replace(".", ",");
-    const subtotalExibir = "R$ " + subtotalCalc.toFixed(2).replace(".", ",");
-    let iframe = document.getElementById("iframe-impressao");
-    if (!iframe) {
-      iframe = document.createElement("iframe");
-      iframe.id = "iframe-impressao";
-      iframe.style.position = "absolute";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      document.body.appendChild(iframe);
-    }
-    const html =
-      "<html><head><title>" +
-      idCurto +
-      "</title><style>@page{size:80mm auto;margin:0}body{width:72mm;font-family:'Courier New',monospace;font-size:13px;padding:4mm;margin:0;color:#000}.titulo{text-align:center;font-weight:900;font-size:18px}.sub{text-align:center;font-size:11px}.linha{border-top:1px dashed #000;margin:8px 0}.linha2{border-top:2px solid #000;margin:8px 0}.big{font-size:16px;font-weight:900}.tot{display:flex;justify-content:space-between;font-size:13px}</style></head><body><div class='titulo'>COZINHA - FRITAR</div><div class='sub'>" +
-      data +
-      " | #" +
-      idCurto +
-      "</div><div class='linha2'></div><div class='big'>" +
-      nomeCliente.toUpperCase() +
-      "</div><div class='linha'></div><div style='white-space:pre-wrap;font-size:13px;font-weight:bold;line-height:19px;'>" +
-      resumoComPreco +
-      "</div><div class='linha2'></div><div style='text-align:center;font-weight:900;font-size:14px;'>*** COZINHA ***</div><br><br><div style='text-align:center;'>- - - - - - - - - - - - - - - -</div><br><br><div class='titulo'>ACARAJE DA BENCAO</div><div class='sub'>VIA ENTREGA | #" +
-      idCurto +
-      "<br>" +
-      data +
-      "</div><div class='linha2'></div><div><b>CLIENTE:</b> " +
-      nomeCliente +
-      "</div><div><b>ZAP:</b> " +
-      (pedido.whatsapp || pedido.telefone || "") +
-      "</div><div><b>END:</b> " +
-      (pedido.endereco || "RETIRADA NO BALCAO") +
-      "</div><div><b>PAG:</b> " +
-      (pedido.formaPagamento || "").toUpperCase() +
-      (pedido.formaPagamento === "DINHEIRO"
-        ? " - TROCO P/ R$ " +
-          pedido.trocoPara +
-          " | TROCO R$ " +
-          Number(pedido.troco || 0).toFixed(2)
-        : " - PAGO") +
-      "</div><div class='linha'></div><div style='white-space:pre-wrap;font-size:11px;line-height:17px;'>" +
-      resumoComPreco +
-      "</div><div class='linha'></div><div class='tot'><span>SUBTOTAL</span><span>" +
-      subtotalExibir +
-      "</span></div><div class='tot'><span>FRETE</span><span>" +
-      (frete === 0 ? "GRATIS" : "R$ " + frete.toFixed(2).replace(".", ",")) +
-      "</span></div><div style='display:flex;justify-content:space-between;font-size:18px;font-weight:900;margin-top:6px;border-top:1px dashed #000;padding-top:6px;'><span>TOTAL</span><span>" +
-      totalExibir +
-      "</span></div><div class='linha2'></div><div style='text-align:center;font-weight:900;'>*** MOTOBOY ***</div><br><br><br><br><br><br><br><script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>";
-    const docIframe = iframe.contentDocument || iframe.contentWindow.document;
-    if (docIframe) {
+    const resumo = pedido.itens?.length
+      ? pedido.itens
+          .map((i) => {
+            const qtd = Number(i.qtd || 1);
+            const nomeP = (i.nome || "ITEM").toUpperCase();
+            const pu = Number(i.preco || 0);
+            let linha = `${qtd}x ${nomeP} - R$ ${pu.toFixed(2).replace(".", ",")} = R$ ${(pu * qtd).toFixed(2).replace(".", ",")}`;
+            const extras = [];
+            if (Array.isArray(i.adicionais))
+              i.adicionais.forEach((c) => {
+                const t = typeof c === "string" ? c : c.nome || "";
+                if (t) extras.push(" + " + String(t).toUpperCase());
+              });
+            if (i.obs) extras.push(" + " + i.obs.toUpperCase());
+            if (extras.length) linha += "\n" + extras.join("\n");
+            return linha;
+          })
+          .join("\n\n")
+      : montarResumoDetalhado(pedido);
+
+    const fazerPrint = (conteudo) => {
+      let iframe = document.getElementById("iframe-impressao");
+      if (!iframe) {
+        iframe = document.createElement("iframe");
+        iframe.id = "iframe-impressao";
+        iframe.style.position = "absolute";
+        iframe.style.width = "0";
+        iframe.style.height = "0";
+        iframe.style.border = "0";
+        document.body.appendChild(iframe);
+      }
+      const html = `<html><head><style>@page{size:80mm auto;margin:0}body{width:72mm;font-family:'Courier New',monospace;font-size:13px;padding:4mm;margin:0;color:#000}.titulo{text-align:center;font-weight:900;font-size:18px}.sub{text-align:center;font-size:11px}.linha{border-top:1px dashed #000;margin:8px 0}.linha2{border-top:2px solid #000;margin:8px 0}.big{font-size:16px;font-weight:900}</style></head><body>${conteudo}<div style='height:90px'></div><script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`;
+      const docIframe = iframe.contentDocument || iframe.contentWindow.document;
       docIframe.open();
       docIframe.write(html);
       docIframe.close();
-    }
+    };
+
+    const cupomCozinha = `<div class='titulo'>COZINHA - FRITAR</div><div class='sub'>${data} | #${idCurto}</div><div class='linha2'></div><div class='big'>${nomeCliente.toUpperCase()}</div><div class='linha'></div><div style='white-space:pre-wrap;font-weight:bold;line-height:19px;'>${resumo}</div><div class='linha2'></div><div style='text-align:center;font-weight:900;font-size:20px;'>*** COZINHA ***</div>`;
+    const cupomMotoboy = `<div class='titulo'>ACARAJE DA BENCAO</div><div class='sub'>VIA ENTREGA | #${idCurto}<br>${data}</div><div class='linha2'></div><div><b>CLIENTE:</b> ${nomeCliente}</div><div><b>ZAP:</b> ${pedido.whatsapp || ""}</div><div><b>END:</b> ${pedido.endereco || "RETIRADA NO BALCAO"}</div><div><b>PAG:</b> ${(pedido.formaPagamento || "").toUpperCase()} ${pedido.formaPagamento === "DINHEIRO" ? " - TROCO P/ R$ " + pedido.trocoPara : ""}</div><div class='linha'></div><div style='white-space:pre-wrap;font-size:11px;line-height:17px;'>${resumo}</div><div class='linha'></div><div style='display:flex;justify-content:space-between'><span>SUBTOTAL</span><span>R$ ${subtotalCalc.toFixed(2).replace(".", ",")}</span></div><div style='display:flex;justify-content:space-between'><span>FRETE</span><span>${frete === 0 ? "GRATIS" : "R$ " + frete.toFixed(2).replace(".", ",")}</span></div><div style='display:flex;justify-content:space-between;font-size:18px;font-weight:900;border-top:1px dashed #000;margin-top:6px;padding-top:6px;'><span>TOTAL</span><span>R$ ${totalNum.toFixed(2).replace(".", ",")}</span></div><div class='linha2'></div><div style='text-align:center;font-weight:900;'>*** MOTOBOY ***</div>`;
+
+    fazerPrint(cupomCozinha);
+    setTimeout(() => fazerPrint(cupomMotoboy), 1500);
   }
 
   useEffect(() => {
@@ -335,7 +269,7 @@ export default function Admin() {
               Notification.permission === "granted"
             ) {
               new Notification(`💵 DINHEIRO - ${p.nome} - R$ ${p.total}`, {
-                body: `Troco para R$ ${p.trocoPara} | ${p.endereco?.slice(0, 40)}`,
+                body: `Troco para R$ ${p.trocoPara}`,
                 requireInteraction: true,
               });
             }
@@ -380,7 +314,7 @@ export default function Admin() {
 
   const abrirWhatsApp = (p) => {
     const zapLimpo = String(p.whatsapp || p.telefone || "").replace(/\D/g, "");
-    const msg = `Olá ${p.nome}! Acarajé da Benção aqui 😊%0A%0ARecebemos seu pedido *#${p.id.slice(-4).toUpperCase()}* no valor de *R$ ${p.total}*%0AForma: *DINHEIRO* - Troco para R$ ${p.trocoPara} (troco R$ ${Number(p.troco || 0).toFixed(2)})%0A%0A${montarResumoDetalhado(p).slice(0, 200)}%0A%0AConfirma seu pedido?`;
+    const msg = `Olá ${p.nome}! Acarajé da Benção aqui 😊%0ARecebemos seu pedido *#${p.id.slice(-4).toUpperCase()}* no valor de *R$ ${p.total}*%0AForma: *DINHEIRO* - Troco para R$ ${p.trocoPara}%0AConfirma?`;
     const url = `https://wa.me/55${zapLimpo}?text=${msg}`;
     if (Platform.OS === "web") window.open(url, "_blank");
     else Linking.openURL(url);
@@ -389,9 +323,7 @@ export default function Admin() {
     try {
       if (
         Platform.OS === "web" &&
-        !window.confirm(
-          `CONFIRMAR pedido DINHEIRO de ${p.nome}? Vai baixar estoque e mandar pra cozinha!`,
-        )
+        !window.confirm(`CONFIRMAR DINHEIRO de ${p.nome}?`)
       )
         return;
       for (const item of p.itens || []) {
@@ -402,8 +334,10 @@ export default function Admin() {
         if (snap.exists()) {
           const atual = snap.data().estoque ?? 0;
           const qtd = item.qtd ?? item.quantidade ?? 1;
-          const novo = Math.max(0, atual - qtd);
-          await updateDoc(ref, { estoque: novo, disponivel: novo > 0 });
+          await updateDoc(ref, {
+            estoque: Math.max(0, atual - qtd),
+            disponivel: atual - qtd > 0,
+          });
         }
       }
       await updateDoc(doc(db, "pedidos", p.id), {
@@ -415,14 +349,14 @@ export default function Admin() {
         confirmadoEm: serverTimestamp(),
       });
       jaImpressos.current.delete(p.id);
-      alert("✅ Confirmado! Indo pra cozinha agora");
+      alert("✅ Confirmado! Indo pra cozinha");
     } catch (e) {
       alert("Erro: " + e.message);
     }
   };
   const exportarClientes = () => {
     if (clientes.length === 0) {
-      Alert.alert("Nenhum cliente ainda");
+      Alert.alert("Nenhum cliente");
       return;
     }
     let csv = "NOME,WHATSAPP,ACEITA_PROMO,ULTIMO_PEDIDO\n";
@@ -432,7 +366,7 @@ export default function Admin() {
         : "";
       csv +=
         '"' +
-        (c.nome || "").replace(/"/g, "") +
+        (c.nome || "") +
         '","' +
         (c.whatsapp || "") +
         '","' +
@@ -446,10 +380,8 @@ export default function Admin() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download =
-        "clientes-acaraje-" + new Date().toISOString().slice(0, 10) + ".csv";
+      a.download = "clientes-" + new Date().toISOString().slice(0, 10) + ".csv";
       a.click();
-      URL.revokeObjectURL(url);
     }
   };
   const pedidosFiltrados = pedidos.filter((p) => {
@@ -471,10 +403,9 @@ export default function Admin() {
   });
   const apagarPedido = async (id) => {
     try {
-      const confirma =
-        Platform.OS === "web" ? window.confirm("Apagar esse pedido?") : true;
+      const c = Platform.OS === "web" ? window.confirm("Apagar pedido?") : true;
       if (Platform.OS !== "web") {
-        Alert.alert("Apagar?", "Apagar esse pedido?", [
+        Alert.alert("Apagar?", "Apagar?", [
           { text: "Cancelar", style: "cancel" },
           {
             text: "Apagar",
@@ -486,32 +417,28 @@ export default function Admin() {
         ]);
         return;
       }
-      if (!confirma) return;
+      if (!c) return;
       await deleteDoc(doc(db, "pedidos", id));
     } catch (e) {
-      alert("Erro ao apagar: " + e.message);
+      alert(e.message);
     }
   };
   const apagarTodos = async () => {
     try {
-      const confirma =
-        Platform.OS === "web"
-          ? window.confirm("APAGAR TODO HISTÓRICO DE TESTES?")
-          : true;
-      if (!confirma) return;
+      const c =
+        Platform.OS === "web" ? window.confirm("APAGAR HISTÓRICO?") : true;
+      if (!c) return;
       const snap = await getDocs(collection(db, "pedidos"));
       for (const d of snap.docs) await deleteDoc(doc(db, "pedidos", d.id));
-      alert("Histórico limpo! (" + snap.size + " pedidos)");
+      alert("Histórico limpo! (" + snap.size + ")");
     } catch (e) {
-      alert("Erro ao apagar tudo: " + e.message);
+      alert(e.message);
     }
   };
   const corrigirTodoEstoque = async () => {
     if (
       Platform.OS === "web" &&
-      !window.confirm(
-        "Colocar 50 de estoque em TODOS os produtos que estão SEM ESTOQUE?",
-      )
+      !window.confirm("Colocar 50 em todos SEM ESTOQUE?")
     )
       return;
     const snap = await getDocs(collection(db, "produtos"));
@@ -524,7 +451,7 @@ export default function Admin() {
         });
       }
     }
-    alert("Pronto! Todo mundo com estoque 50 agora!");
+    alert("Pronto! Estoque 50");
   };
   const salvarProduto = async () => {
     if (!nome || !preco) return Alert.alert("Falta nome/preço");
@@ -606,7 +533,7 @@ export default function Admin() {
       if (data.secure_url) {
         if (editando) setEditando({ ...editando, imagemURL: data.secure_url });
         else setImageUrl(data.secure_url);
-      } else Alert.alert("Erro no upload", JSON.stringify(data));
+      } else Alert.alert("Erro upload", JSON.stringify(data));
     } catch (e) {
       Alert.alert("Erro", e.message);
     } finally {
@@ -858,7 +785,6 @@ export default function Admin() {
           </ScrollView>
         </View>
       </Modal>
-
       {autorizado && (
         <ScrollView
           style={{
@@ -953,7 +879,6 @@ export default function Admin() {
               </Text>
             </TouchableOpacity>
           </View>
-
           {aba === "pedidos" && (
             <View>
               <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
@@ -1007,7 +932,7 @@ export default function Admin() {
                   <Text
                     style={{ color: "red", fontWeight: "900", fontSize: 9 }}
                   >
-                    🗑️ APAGAR HISTÓRICO
+                    🗑️ HISTÓRICO
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1100,7 +1025,6 @@ export default function Admin() {
                         style={{
                           flexDirection: "row",
                           justifyContent: "space-between",
-                          alignItems: "center",
                         }}
                       >
                         <Text
@@ -1115,75 +1039,31 @@ export default function Admin() {
                           }}
                         >
                           {isAguardandoDinheiro
-                            ? "💵 DINHEIRO - CONFIRMAR"
+                            ? "💵 DINHEIRO"
                             : isEntrega
                               ? "🛵 ENTREGA"
                               : "🟢 RETIRADA"}{" "}
                           • {hora} {p.impresso ? "🖨️" : ""}
                         </Text>
-                        <View
+                        <TouchableOpacity
+                          onPress={() => apagarPedido(p.id)}
                           style={{
-                            flexDirection: "row",
-                            gap: 6,
-                            alignItems: "center",
+                            backgroundColor: "#330000",
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 12,
                           }}
                         >
-                          <View
+                          <Text
                             style={{
-                              backgroundColor: isAguardandoDinheiro
-                                ? "#FFAA00"
-                                : isEntregue
-                                  ? "#333"
-                                  : isPagoAuto
-                                    ? "#00C851"
-                                    : "#442200",
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                              borderRadius: 12,
+                              color: "red",
+                              fontSize: 10,
+                              fontWeight: "900",
                             }}
                           >
-                            <Text
-                              style={{
-                                color: isAguardandoDinheiro
-                                  ? "#000"
-                                  : isEntregue
-                                    ? "#aaa"
-                                    : isPagoAuto
-                                      ? "#fff"
-                                      : "#ffaa00",
-                                fontWeight: "900",
-                                fontSize: 9,
-                              }}
-                            >
-                              {isAguardandoDinheiro
-                                ? "⚠️ AGUARDANDO"
-                                : isEntregue
-                                  ? "ENTREGUE"
-                                  : isPagoAuto
-                                    ? "✓ PAGO"
-                                    : "A PAGAR"}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => apagarPedido(p.id)}
-                            style={{
-                              backgroundColor: "#330000",
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                              borderRadius: 12,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: "red",
-                                fontSize: 10,
-                                fontWeight: "900",
-                              }}
-                            >
-                              X
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
+                            X
+                          </Text>
+                        </TouchableOpacity>
                       </View>
                       <Text
                         style={{
@@ -1213,7 +1093,7 @@ export default function Admin() {
                               fontSize: 14,
                             }}
                           >
-                            💰 TROCO PARA R$ {p.trocoPara} | TROCO: R${" "}
+                            💰 TROCO P/ R$ {p.trocoPara} | TROCO: R${" "}
                             {Number(p.troco || 0).toFixed(2)}
                           </Text>
                         </View>
@@ -1265,7 +1145,7 @@ export default function Admin() {
                                 fontSize: 12,
                               }}
                             >
-                              💬 WHATSAPP
+                              💬 ZAP
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -1368,7 +1248,6 @@ export default function Admin() {
               </View>
             </View>
           )}
-
           {aba === "produtos" && (
             <View style={{ gap: 12 }}>
               <View
@@ -1854,7 +1733,7 @@ export default function Admin() {
                 <Text
                   style={{ color: "#D4AF37", fontSize: 10, fontWeight: "900" }}
                 >
-                  ⏱️ TEMPO ENTREGA (10 a 23 min)
+                  ⏱️ TEMPO ENTREGA
                 </Text>
                 <TextInput
                   value={config.tempoEntrega}
@@ -1874,7 +1753,7 @@ export default function Admin() {
                 <Text
                   style={{ color: "#00C851", fontSize: 10, fontWeight: "900" }}
                 >
-                  ⏱️ TEMPO RETIRADA (11a 24min)
+                  ⏱️ TEMPO RETIRADA
                 </Text>
                 <TextInput
                   value={config.tempoRetirada}
