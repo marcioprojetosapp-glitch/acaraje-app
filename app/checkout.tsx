@@ -6,7 +6,6 @@ import { useRouter } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,59 +19,66 @@ export default function Carrinho() {
   const router = useRouter();
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
-      if (snap.exists()) setConfigLoja(snap.data());
-    });
-    return () => unsub();
+    try {
+      const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
+        if (snap.exists()) setConfigLoja(snap.data());
+      });
+      return () => unsub();
+    } catch {
+      return;
+    }
   }, []);
 
-  const getQtd = (i: any) => i.quantidade ?? i.qtd ?? 1;
+  const getQtd = (i: any) => Number(i?.quantidade ?? i?.qtd ?? 1) || 1;
+  const getPreco = (i: any) => Number(i?.preco ?? 0) || 0;
+
   const taxa = Number(configLoja?.taxaEntrega ?? configLoja?.valorFrete ?? 8);
-  const subtotal = carrinho.reduce(
-    (a: number, it: any) => a + Number(it.preco) * getQtd(it),
+  const subtotal = (carrinho || []).reduce(
+    (a: number, it: any) => a + getPreco(it) * getQtd(it),
     0,
   );
   const total = subtotal + taxa;
 
-  const resumo = carrinho
+  const resumo = (carrinho || [])
     .map((it: any) => {
       const qtd = getQtd(it);
       const ads = (it.adicionais || [])
-        .map((a: any) => (typeof a === "string" ? a : a.nome))
+        .map((a: any) => (typeof a === "string" ? a : a?.nome || ""))
+        .filter(Boolean)
         .join(", ");
       const obs = it.obs ? ` OBS:${it.obs}` : "";
-      return `${qtd}x ${it.nome}${ads ? ` + ${ads}` : ""}${obs}`;
+      return `${qtd}x ${it.nome || "Item"}${ads ? ` + ${ads}` : ""}${obs}`;
     })
     .join(" | ");
 
   function irParaCheckout() {
-    router.push({
-      pathname: "/checkout",
-      params: {
-        subtotal: String(subtotal),
-        taxa: String(taxa),
-        total: String(total),
-        resumo: encodeURIComponent(resumo),
-        tempo: "30-45 min",
-        tipo: "entrega",
-      },
+    if (!carrinho?.length) return;
+    // NÃO usa encodeURIComponent aqui, o router já faz
+    const params = new URLSearchParams({
+      subtotal: String(subtotal),
+      taxa: String(taxa),
+      total: String(total),
+      resumo: resumo || "pedido",
+      tempo: "30-45 min",
+      tipo: "entrega",
     });
+    router.push(`/checkout?${params.toString()}` as any);
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#D4AF37" />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.titulo}>Carrinho</Text>
-          <Text style={styles.qtd}>{carrinho.length} itens</Text>
+          <Text style={styles.qtd}>{(carrinho || []).length} itens</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 180 }}>
-        {carrinho.length === 0 ? (
+        {!carrinho || carrinho.length === 0 ? (
           <Text style={{ color: "#888", textAlign: "center", marginTop: 60 }}>
             Carrinho vazio
           </Text>
@@ -89,11 +95,10 @@ export default function Carrinho() {
                     }}
                   >
                     <Text style={styles.nome}>
-                      {qtd}x {String(item.nome).toUpperCase()}
+                      {qtd}x {String(item.nome || "ITEM").toUpperCase()}
                     </Text>
                     <Text style={styles.preco}>
-                      R${" "}
-                      {(Number(item.preco) * qtd).toFixed(2).replace(".", ",")}
+                      R$ {(getPreco(item) * qtd).toFixed(2).replace(".", ",")}
                     </Text>
                   </View>
                   {(item.adicionais || []).map((ad: any, i: number) => (
@@ -122,7 +127,7 @@ export default function Carrinho() {
         )}
       </ScrollView>
 
-      {carrinho.length > 0 && (
+      {(carrinho || []).length > 0 && (
         <View style={styles.footer}>
           <View style={styles.linha}>
             <Text style={styles.label}>Subtotal</Text>
@@ -148,12 +153,12 @@ export default function Carrinho() {
           </TouchableOpacity>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#000" },
+  safe: { flex: 1, backgroundColor: "#000", paddingTop: 45 },
   header: {
     padding: 16,
     paddingTop: 50,
