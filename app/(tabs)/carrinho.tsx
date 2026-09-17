@@ -224,3 +224,4 @@ const styles = StyleSheet.create({
   },
   btnTxt: { color: "#000", fontWeight: "900", fontSize: 15 },
 });
+s;
