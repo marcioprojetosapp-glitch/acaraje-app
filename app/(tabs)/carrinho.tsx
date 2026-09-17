@@ -6,7 +6,6 @@ import { useRouter } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -46,27 +45,34 @@ export default function Carrinho() {
     .join(" | ");
 
   function irParaCheckout() {
-    router.push({
-      pathname: "/checkout",
-      params: {
-        subtotal: String(subtotal),
-        taxa: String(taxa),
-        total: String(total),
-        resumo: encodeURIComponent(resumo),
-        tempo: "30-45 min",
-        tipo: "entrega",
-      },
+    // FIX WEB: usa URL string em vez de objeto params
+    const params = new URLSearchParams({
+      subtotal: String(subtotal),
+      taxa: String(taxa),
+      total: String(total),
+      resumo: resumo, // sem encode aqui, URLSearchParams já faz
+      tempo: "30-45 min",
+      tipo: "entrega",
     });
+    router.push(`/checkout?${params.toString()}` as any);
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.titulo}>Carrinho</Text>
-        <Text style={styles.qtd}>{carrinho.length} itens</Text>
+        <TouchableOpacity
+          onPress={() => router.push("/" as any)}
+          style={styles.backBtn}
+        >
+          <Ionicons name="arrow-back" size={22} color="#D4AF37" />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.titulo}>Carrinho</Text>
+          <Text style={styles.qtd}>{carrinho.length} itens</Text>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 180 }}>
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 200 }}>
         {carrinho.length === 0 ? (
           <Text style={{ color: "#888", textAlign: "center", marginTop: 60 }}>
             Carrinho vazio
@@ -138,26 +144,31 @@ export default function Carrinho() {
               R$ {total.toFixed(2).replace(".", ",")}
             </Text>
           </View>
-          <TouchableOpacity style={styles.btn} onPress={irParaCheckout}>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={irParaCheckout}
+            activeOpacity={0.8}
+          >
             <Text style={styles.btnTxt}>FINALIZAR PEDIDO</Text>
           </TouchableOpacity>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#000" },
-  header: {
-    padding: 16,
-    paddingTop: 50,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  safe: { flex: 1, backgroundColor: "#000", paddingTop: 45 },
+  header: { padding: 16, flexDirection: "row", alignItems: "center" },
+  backBtn: {
+    backgroundColor: "#1E1E1E",
+    padding: 12,
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: "#333",
   },
-  titulo: { color: "#D4AF37", fontSize: 28, fontWeight: "900" },
-  qtd: { color: "#888" },
+  titulo: { color: "#D4AF37", fontSize: 26, fontWeight: "900" },
+  qtd: { color: "#888", fontSize: 12 },
   card: {
     backgroundColor: "#1E1E1E",
     padding: 14,
