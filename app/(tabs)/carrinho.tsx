@@ -19,38 +19,51 @@ export default function Carrinho() {
   const router = useRouter();
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
-      if (snap.exists()) setConfigLoja(snap.data());
-    });
-    return () => unsub();
+    try {
+      const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
+        if (snap.exists()) setConfigLoja(snap.data());
+      });
+      return () => unsub();
+    } catch {}
   }, []);
 
-  const getQtd = (i: any) => i.quantidade ?? i.qtd ?? 1;
+  const safePreco = (p: any) => Number(p?.preco ?? p?.valor ?? 0) || 0;
+  const safeQtd = (i: any) => Number(i?.quantidade ?? i?.qtd ?? 1) || 1;
   const taxa = Number(configLoja?.taxaEntrega ?? configLoja?.valorFrete ?? 8);
-  const subtotal = carrinho.reduce(
-    (a: number, it: any) => a + Number(it.preco) * getQtd(it),
-    0,
-  );
+
+  const subtotal = (carrinho || []).reduce((a: number, it: any) => {
+    try {
+      return a + safePreco(it) * safeQtd(it);
+    } catch {
+      return a;
+    }
+  }, 0);
   const total = subtotal + taxa;
 
-  const resumo = carrinho
+  const resumo = (carrinho || [])
     .map((it: any) => {
-      const qtd = getQtd(it);
-      const ads = (it.adicionais || [])
-        .map((a: any) => (typeof a === "string" ? a : a.nome))
-        .join(", ");
-      const obs = it.obs ? ` OBS:${it.obs}` : "";
-      return `${qtd}x ${it.nome}${ads ? ` + ${ads}` : ""}${obs}`;
+      try {
+        const qtd = safeQtd(it);
+        const ads = (it.adicionais || [])
+          .map((a: any) => (typeof a === "string" ? a : a?.nome || ""))
+          .filter(Boolean)
+          .join(", ");
+        const obs = it.obs ? ` OBS:${it.obs}` : "";
+        return `${qtd}x ${it.nome || "Item"}${ads ? ` + ${ads}` : ""}${obs}`;
+      } catch {
+        return "";
+      }
     })
+    .filter(Boolean)
     .join(" | ");
 
   function irParaCheckout() {
-    // FIX WEB: usa URL string em vez de objeto params
+    if (!carrinho?.length) return;
     const params = new URLSearchParams({
       subtotal: String(subtotal),
       taxa: String(taxa),
       total: String(total),
-      resumo: resumo, // sem encode aqui, URLSearchParams já faz
+      resumo: resumo || "pedido",
       tempo: "30-45 min",
       tipo: "entrega",
     });
@@ -68,20 +81,21 @@ export default function Carrinho() {
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.titulo}>Carrinho</Text>
-          <Text style={styles.qtd}>{carrinho.length} itens</Text>
+          <Text style={styles.qtd}>{carrinho?.length || 0} itens</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 200 }}>
-        {carrinho.length === 0 ? (
+        {!carrinho || carrinho.length === 0 ? (
           <Text style={{ color: "#888", textAlign: "center", marginTop: 60 }}>
             Carrinho vazio
           </Text>
         ) : (
           carrinho.map((item: any, idx: number) => {
-            const qtd = getQtd(item);
+            const qtd = safeQtd(item);
+            const preco = safePreco(item);
             return (
-              <View key={idx} style={styles.card}>
+              <View key={String(item.id || idx)} style={styles.card}>
                 <View style={{ flex: 1 }}>
                   <View
                     style={{
@@ -90,18 +104,17 @@ export default function Carrinho() {
                     }}
                   >
                     <Text style={styles.nome}>
-                      {qtd}x {String(item.nome).toUpperCase()}
+                      {qtd}x {String(item.nome || "ITEM").toUpperCase()}
                     </Text>
                     <Text style={styles.preco}>
-                      R${" "}
-                      {(Number(item.preco) * qtd).toFixed(2).replace(".", ",")}
+                      R$ {(preco * qtd).toFixed(2).replace(".", ",")}
                     </Text>
                   </View>
                   {(item.adicionais || []).map((ad: any, i: number) => (
                     <Text key={i} style={styles.adicional}>
                       +{" "}
                       {String(
-                        typeof ad === "string" ? ad : ad.nome,
+                        typeof ad === "string" ? ad : ad.nome || ad,
                       ).toUpperCase()}
                     </Text>
                   ))}
@@ -123,7 +136,7 @@ export default function Carrinho() {
         )}
       </ScrollView>
 
-      {carrinho.length > 0 && (
+      {carrinho?.length > 0 && (
         <View style={styles.footer}>
           <View style={styles.linha}>
             <Text style={styles.label}>Subtotal</Text>
@@ -224,4 +237,3 @@ const styles = StyleSheet.create({
   },
   btnTxt: { color: "#000", fontWeight: "900", fontSize: 15 },
 });
-s;

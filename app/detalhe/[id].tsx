@@ -6,9 +6,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
   Image,
-  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -24,6 +23,7 @@ type Produto = {
   descricao: string;
   imagemURL: string;
   categoria: string;
+  estoque?: number;
 };
 
 export default function DetalheProduto() {
@@ -32,15 +32,16 @@ export default function DetalheProduto() {
   const { adicionarAoCarrinho, carrinho } = useCarrinho();
 
   const [produto, setProduto] = useState<Produto | null>(null);
+  const [loading, setLoading] = useState(true);
   const [quantidade, setQuantidade] = useState(1);
+
   const [camarao, setCamarao] = useState(false);
   const [vatapa, setVatapa] = useState(true);
   const [salada, setSalada] = useState(true);
   const [pimenta, setPimenta] = useState<"sem" | "com" | null>(null);
   const [qtdCopos, setQtdCopos] = useState(0);
-  const [loading, setLoading] = useState(true);
 
-  const totalItens = carrinho.reduce(
+  const totalItens = (carrinho || []).reduce(
     (acc, item) => acc + (item.qtd || item.quantidade || 0),
     0,
   );
@@ -52,6 +53,7 @@ export default function DetalheProduto() {
 
   async function carregarProduto() {
     try {
+      setLoading(true);
       if (!id) return;
       const snap = await getDoc(doc(db, "produtos", String(id)));
       if (snap.exists()) {
@@ -64,7 +66,7 @@ export default function DetalheProduto() {
     }
   }
 
-  if (loading)
+  if (loading) {
     return (
       <View
         style={[
@@ -72,15 +74,18 @@ export default function DetalheProduto() {
           { justifyContent: "center", alignItems: "center" },
         ]}
       >
-        <Text style={{ color: "#fff" }}>Carregando...</Text>
+        <ActivityIndicator color="#D4AF37" size="large" />
+        <Text style={{ color: "#fff", marginTop: 10 }}>Carregando...</Text>
       </View>
     );
-  if (!produto)
+  }
+
+  if (!produto) {
     return (
       <View
         style={[
           styles.safe,
-          { justifyContent: "center", alignItems: "center" },
+          { justifyContent: "center", alignItems: "center", padding: 20 },
         ]}
       >
         <Text style={{ color: "#fff" }}>Produto não encontrado</Text>
@@ -89,7 +94,7 @@ export default function DetalheProduto() {
           style={{
             marginTop: 20,
             backgroundColor: "#D4AF37",
-            padding: 12,
+            padding: 14,
             borderRadius: 10,
           }}
         >
@@ -97,6 +102,7 @@ export default function DetalheProduto() {
         </TouchableOpacity>
       </View>
     );
+  }
 
   const cat = produto?.categoria?.toLowerCase() || "";
   const nomeLower = produto?.nome.toLowerCase() || "";
@@ -115,11 +121,12 @@ export default function DetalheProduto() {
     nomeLower.includes("lata");
 
   const adicionalComida = ehComida && camarao ? 3 : 0;
-  const precoUnitario = produto ? produto.preco + adicionalComida : 0;
+  const precoUnitario = (Number(produto.preco) || 0) + adicionalComida;
   const precoTotal = precoUnitario * quantidade;
 
   function handleAdicionar() {
     if (!produto) return;
+
     const adicionaisLista: string[] = [];
     if (ehComida) {
       if (camarao) adicionaisLista.push("Camarão");
@@ -128,15 +135,14 @@ export default function DetalheProduto() {
       if (pimenta === "sem") adicionaisLista.push("Sem pimenta");
       if (pimenta === "com") adicionaisLista.push("Com pimenta");
     }
-    if (ehBebida && qtdCopos > 0)
+    if (ehBebida && qtdCopos > 0) {
       adicionaisLista.push(`${qtdCopos} Copo(s) descartável`);
+    }
 
     const listaUnica = [...new Set(adicionaisLista)].sort();
-    const adicionaisKey = listaUnica.join("-");
-    const itemId = `${produto.id}-${adicionaisKey}-${qtdCopos}`;
 
     adicionarAoCarrinho({
-      id: itemId,
+      id: `${produto.id}-${Date.now()}`, // ID único evita conflito que dava tela branca
       nome: produto.nome,
       preco: precoUnitario,
       qtd: quantidade,
@@ -147,14 +153,13 @@ export default function DetalheProduto() {
       imagemURL: produto.imagemURL,
     } as any);
 
-    if (Platform.OS === "web") {
-      // @ts-ignore
-      window.alert(`${quantidade}x ${produto.nome} adicionado!`);
-    } else {
-      Alert.alert("Sucesso", `${quantidade}x ${produto.nome} adicionado!`);
-    }
-    router.push("/(tabs)/carrinho" as any);
+    // FIX TELA BRANCA: espera o contexto salvar antes de navegar
+    setTimeout(() => {
+      router.push("/(tabs)/carrinho" as any);
+    }, 150);
   }
+
+  const imgUri = produto.imagemURL || (produto as any).imagem || "";
 
   return (
     <View style={styles.safe}>
@@ -165,11 +170,26 @@ export default function DetalheProduto() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.containerImagem}>
-          <Image
-            source={{ uri: produto.imagemURL || "" }}
-            style={styles.imagem}
-            resizeMode="cover"
-          />
+          {imgUri ? (
+            <Image
+              source={{ uri: imgUri }}
+              style={styles.imagem}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={[
+                styles.imagem,
+                {
+                  justifyContent: "center",
+                  alignItems: "center",
+                  backgroundColor: "#111",
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 60 }}>🍽️</Text>
+            </View>
+          )}
           <TouchableOpacity
             style={styles.btnVoltar}
             onPress={() => router.back()}
