@@ -30,6 +30,7 @@ export default function Checkout() {
   const [end, setEnd] = useState("");
   const [pag, setPag] = useState("pix");
   const [enviando, setEnviando] = useState(false);
+  const [pedidoOk, setPedidoOk] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "config", "loja"), (s) => {
@@ -62,10 +63,7 @@ export default function Checkout() {
       Alert.alert("Falta info", "Preencha nome, WhatsApp e endereço");
       return;
     }
-    if (!carrinho?.length) {
-      router.replace("/" as any);
-      return;
-    }
+    if (!carrinho?.length) return;
     try {
       setEnviando(true);
       await addDoc(collection(db, "pedidos"), {
@@ -81,18 +79,53 @@ export default function Checkout() {
         status: "novo",
         criadoEm: serverTimestamp(),
       });
-      if (limparCarrinho) limparCarrinho();
-      Alert.alert("Pedido enviado!", "Já recebemos seu pedido");
-      router.replace("/" as any);
+      setPedidoOk(true);
+      // limpa só DEPOIS de mostrar sucesso
+      setTimeout(() => {
+        if (limparCarrinho) limparCarrinho();
+      }, 1000);
     } catch (e) {
       console.log(e);
       Alert.alert("Erro", "Não deu pra enviar, tenta de novo");
-    } finally {
       setEnviando(false);
     }
   }
 
-  if (!carrinho?.length) {
+  // SE JÁ ENVIOU, MOSTRA TELA DE SUCESSO - NÃO VOLTA PRA HOME
+  if (pedidoOk) {
+    return (
+      <View
+        style={[
+          styles.safe,
+          { justifyContent: "center", alignItems: "center", padding: 24 },
+        ]}
+      >
+        <Ionicons name="checkmark-circle" size={90} color="#00C851" />
+        <Text
+          style={{
+            color: "#fff",
+            fontSize: 24,
+            fontWeight: "900",
+            marginTop: 16,
+            textAlign: "center",
+          }}
+        >
+          PEDIDO ENVIADO!
+        </Text>
+        <Text style={{ color: "#aaa", marginTop: 8, textAlign: "center" }}>
+          Já recebemos seu pedido de R$ {total.toFixed(2).replace(".", ",")}
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.replace("/" as any)}
+          style={[styles.btn, { marginTop: 30, width: "100%" }]}
+        >
+          <Text style={styles.btnTxt}>VOLTAR AO CARDÁPIO</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!carrinho?.length && !enviando) {
     return (
       <View style={styles.safe}>
         <Text style={{ color: "#fff", padding: 20, marginTop: 50 }}>
@@ -116,7 +149,6 @@ export default function Checkout() {
         </TouchableOpacity>
         <Text style={styles.titulo}>Finalizar Pedido</Text>
       </View>
-
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 200 }}>
         <View style={styles.card}>
           <Text style={styles.labR}>RESUMO</Text>
@@ -131,7 +163,6 @@ export default function Checkout() {
             </Text>
           </View>
         </View>
-
         <Text style={styles.lab}>Seu nome *</Text>
         <TextInput
           style={styles.input}
@@ -140,7 +171,6 @@ export default function Checkout() {
           placeholder="Ex: Maria"
           placeholderTextColor="#666"
         />
-
         <Text style={styles.lab}>WhatsApp *</Text>
         <TextInput
           style={styles.input}
@@ -150,17 +180,15 @@ export default function Checkout() {
           placeholderTextColor="#666"
           keyboardType="phone-pad"
         />
-
         <Text style={styles.lab}>Endereço completo *</Text>
         <TextInput
           style={styles.input}
           value={end}
           onChangeText={setEnd}
-          placeholder="Rua, número, bairro, ponto de referência"
+          placeholder="Rua, número, bairro"
           placeholderTextColor="#666"
           multiline
         />
-
         <Text style={styles.lab}>Pagamento</Text>
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 24 }}>
           {["pix", "dinheiro", "cartao"].map((p) => (
@@ -175,7 +203,6 @@ export default function Checkout() {
             </TouchableOpacity>
           ))}
         </View>
-
         <TouchableOpacity
           style={[styles.btn, enviando && { opacity: 0.6 }]}
           onPress={finalizar}
@@ -191,7 +218,6 @@ export default function Checkout() {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#000", paddingTop: 45 },
   header: {
