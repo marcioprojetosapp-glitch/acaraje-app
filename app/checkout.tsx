@@ -22,7 +22,7 @@ import {
 } from "react-native";
 
 export default function Checkout() {
-  const { carrinho, limparCarrinho } = useCarrinho() as any;
+  const { carrinho } = useCarrinho() as any;
   const router = useRouter();
   const [config, setConfig] = useState<any>(null);
   const [nome, setNome] = useState("");
@@ -30,7 +30,6 @@ export default function Checkout() {
   const [end, setEnd] = useState("");
   const [pag, setPag] = useState("pix");
   const [enviando, setEnviando] = useState(false);
-  const [pedidoOk, setPedidoOk] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "config", "loja"), (s) => {
@@ -66,24 +65,26 @@ export default function Checkout() {
     if (!carrinho?.length) return;
     try {
       setEnviando(true);
-      await addDoc(collection(db, "pedidos"), {
+      const isRetirada = String(end).toUpperCase().includes("RETIRADA");
+      const ref = await addDoc(collection(db, "pedidos"), {
         cliente: nome.trim(),
         telefone: tel.trim(),
         endereco: end.trim(),
         pagamento: pag,
+        tipoEntrega: isRetirada ? "retirada" : "entrega",
         subtotal,
         taxa,
+        taxaEntrega: taxa,
+        frete: taxa,
+        valorFrete: taxa,
         total,
         resumo,
         itens: carrinho,
-        status: "novo",
+        status: "aguardando_pagamento",
+        statusPagamento: "pendente",
         criadoEm: serverTimestamp(),
       });
-      setPedidoOk(true);
-      // limpa só DEPOIS de mostrar sucesso
-      setTimeout(() => {
-        if (limparCarrinho) limparCarrinho();
-      }, 1000);
+      router.replace(`/pagamento?pedidoId=${ref.id}` as any);
     } catch (e) {
       console.log(e);
       Alert.alert("Erro", "Não deu pra enviar, tenta de novo");
@@ -91,41 +92,7 @@ export default function Checkout() {
     }
   }
 
-  // SE JÁ ENVIOU, MOSTRA TELA DE SUCESSO - NÃO VOLTA PRA HOME
-  if (pedidoOk) {
-    return (
-      <View
-        style={[
-          styles.safe,
-          { justifyContent: "center", alignItems: "center", padding: 24 },
-        ]}
-      >
-        <Ionicons name="checkmark-circle" size={90} color="#00C851" />
-        <Text
-          style={{
-            color: "#fff",
-            fontSize: 24,
-            fontWeight: "900",
-            marginTop: 16,
-            textAlign: "center",
-          }}
-        >
-          PEDIDO ENVIADO!
-        </Text>
-        <Text style={{ color: "#aaa", marginTop: 8, textAlign: "center" }}>
-          Já recebemos seu pedido de R$ {total.toFixed(2).replace(".", ",")}
-        </Text>
-        <TouchableOpacity
-          onPress={() => router.replace("/" as any)}
-          style={[styles.btn, { marginTop: 30, width: "100%" }]}
-        >
-          <Text style={styles.btnTxt}>VOLTAR AO CARDÁPIO</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (!carrinho?.length && !enviando) {
+  if (!carrinho?.length) {
     return (
       <View style={styles.safe}>
         <Text style={{ color: "#fff", padding: 20, marginTop: 50 }}>
@@ -153,6 +120,27 @@ export default function Checkout() {
         <View style={styles.card}>
           <Text style={styles.labR}>RESUMO</Text>
           <Text style={{ color: "#fff", lineHeight: 20 }}>{resumo}</Text>
+          <View style={styles.div} />
+          <View
+            style={{ flexDirection: "row", justifyContent: "space-between" }}
+          >
+            <Text style={{ color: "#9ca3af" }}>Subtotal</Text>
+            <Text style={{ color: "#fff" }}>
+              R$ {subtotal.toFixed(2).replace(".", ",")}
+            </Text>
+          </View>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              marginTop: 4,
+            }}
+          >
+            <Text style={{ color: "#9ca3af" }}>Entrega</Text>
+            <Text style={{ color: "#fff" }}>
+              R$ {taxa.toFixed(2).replace(".", ",")}
+            </Text>
+          </View>
           <View style={styles.div} />
           <View
             style={{ flexDirection: "row", justifyContent: "space-between" }}
@@ -185,7 +173,7 @@ export default function Checkout() {
           style={styles.input}
           value={end}
           onChangeText={setEnd}
-          placeholder="Rua, número, bairro"
+          placeholder="Rua, número, bairro (ou RETIRADA)"
           placeholderTextColor="#666"
           multiline
         />
@@ -210,14 +198,15 @@ export default function Checkout() {
         >
           <Text style={styles.btnTxt}>
             {enviando
-              ? "ENVIANDO..."
-              : `CONFIRMAR - R$ ${total.toFixed(2).replace(".", ",")}`}
+              ? "CRIANDO PEDIDO..."
+              : `PAGAR R$ ${total.toFixed(2).replace(".", ",")}`}
           </Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#000", paddingTop: 45 },
   header: {
