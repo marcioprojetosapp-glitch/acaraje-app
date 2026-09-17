@@ -40,34 +40,10 @@ export default function Carrinho() {
   }, 0);
   const total = subtotal + taxa;
 
-  const resumo = (carrinho || [])
-    .map((it: any) => {
-      try {
-        const qtd = safeQtd(it);
-        const ads = (it.adicionais || [])
-          .map((a: any) => (typeof a === "string" ? a : a?.nome || ""))
-          .filter(Boolean)
-          .join(", ");
-        const obs = it.obs ? ` OBS:${it.obs}` : "";
-        return `${qtd}x ${it.nome || "Item"}${ads ? ` + ${ads}` : ""}${obs}`;
-      } catch {
-        return "";
-      }
-    })
-    .filter(Boolean)
-    .join(" | ");
-
   function irParaCheckout() {
     if (!carrinho?.length) return;
-    const params = new URLSearchParams({
-      subtotal: String(subtotal),
-      taxa: String(taxa),
-      total: String(total),
-      resumo: resumo || "pedido",
-      tempo: "30-45 min",
-      tipo: "entrega",
-    });
-    router.push(`/checkout?${params.toString()}` as any);
+    // BLINDADO: não passa resumo na URL, checkout lê do Context
+    router.push("/checkout" as any);
   }
 
   return (
