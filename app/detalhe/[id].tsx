@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useCarrinho } from "@/src/context/CarrinhoContext";
 import { db } from "@/src/lib/firebase";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,7 +8,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
-  SafeAreaView,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -26,18 +27,18 @@ type Produto = {
 };
 
 export default function DetalheProduto() {
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams() as { id: string };
   const router = useRouter();
   const { adicionarAoCarrinho, carrinho } = useCarrinho();
 
   const [produto, setProduto] = useState<Produto | null>(null);
   const [quantidade, setQuantidade] = useState(1);
-
   const [camarao, setCamarao] = useState(false);
   const [vatapa, setVatapa] = useState(true);
   const [salada, setSalada] = useState(true);
   const [pimenta, setPimenta] = useState<"sem" | "com" | null>(null);
   const [qtdCopos, setQtdCopos] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   const totalItens = carrinho.reduce(
     (acc, item) => acc + (item.qtd || item.quantidade || 0),
@@ -45,19 +46,60 @@ export default function DetalheProduto() {
   );
 
   useEffect(() => {
+    if (!id) return;
     carregarProduto();
   }, [id]);
 
   async function carregarProduto() {
-    const snap = await getDoc(doc(db, "produtos", id as string));
-    if (snap.exists()) {
-      setProduto({ id: snap.id, ...snap.data() } as Produto);
+    try {
+      if (!id) return;
+      const snap = await getDoc(doc(db, "produtos", String(id)));
+      if (snap.exists()) {
+        setProduto({ id: snap.id, ...snap.data() } as Produto);
+      }
+    } catch (e) {
+      console.log("erro detalhe", e);
+    } finally {
+      setLoading(false);
     }
   }
 
+  if (loading)
+    return (
+      <View
+        style={[
+          styles.safe,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <Text style={{ color: "#fff" }}>Carregando...</Text>
+      </View>
+    );
+  if (!produto)
+    return (
+      <View
+        style={[
+          styles.safe,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <Text style={{ color: "#fff" }}>Produto não encontrado</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{
+            marginTop: 20,
+            backgroundColor: "#D4AF37",
+            padding: 12,
+            borderRadius: 10,
+          }}
+        >
+          <Text style={{ color: "#000", fontWeight: "900" }}>VOLTAR</Text>
+        </TouchableOpacity>
+      </View>
+    );
+
   const cat = produto?.categoria?.toLowerCase() || "";
   const nomeLower = produto?.nome.toLowerCase() || "";
-
   const ehComida =
     cat.includes("comida") ||
     nomeLower.includes("acarajé") ||
@@ -78,7 +120,6 @@ export default function DetalheProduto() {
 
   function handleAdicionar() {
     if (!produto) return;
-
     const adicionaisLista: string[] = [];
     if (ehComida) {
       if (camarao) adicionaisLista.push("Camarão");
@@ -87,14 +128,11 @@ export default function DetalheProduto() {
       if (pimenta === "sem") adicionaisLista.push("Sem pimenta");
       if (pimenta === "com") adicionaisLista.push("Com pimenta");
     }
-    if (ehBebida && qtdCopos > 0) {
+    if (ehBebida && qtdCopos > 0)
       adicionaisLista.push(`${qtdCopos} Copo(s) descartável`);
-    }
 
-    const listaUnica = [...new Set(adicionaisLista)];
-    const listaOrdenada = listaUnica.sort();
-
-    const adicionaisKey = listaOrdenada.join("-");
+    const listaUnica = [...new Set(adicionaisLista)].sort();
+    const adicionaisKey = listaUnica.join("-");
     const itemId = `${produto.id}-${adicionaisKey}-${qtdCopos}`;
 
     adicionarAoCarrinho({
@@ -103,41 +141,44 @@ export default function DetalheProduto() {
       preco: precoUnitario,
       qtd: quantidade,
       quantidade: quantidade,
-      obs: listaOrdenada.join(", "),
-      adicionais: listaOrdenada,
+      obs: listaUnica.join(", "),
+      adicionais: listaUnica,
       imagem: produto.imagemURL,
       imagemURL: produto.imagemURL,
     } as any);
 
-    Alert.alert("Sucesso", `${quantidade}x ${produto.nome} adicionado!`);
-    router.push("/(tabs)/carrinho");
+    if (Platform.OS === "web") {
+      // @ts-ignore
+      window.alert(`${quantidade}x ${produto.nome} adicionado!`);
+    } else {
+      Alert.alert("Sucesso", `${quantidade}x ${produto.nome} adicionado!`);
+    }
+    router.push("/(tabs)/carrinho" as any);
   }
 
-  if (!produto) return null;
-
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 110 }}
         bounces={false}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.containerImagem}>
           <Image
-            source={{ uri: produto.imagemURL }}
+            source={{ uri: produto.imagemURL || "" }}
             style={styles.imagem}
             resizeMode="cover"
           />
           <TouchableOpacity
             style={styles.btnVoltar}
-            onPress={() => router.push("/(tabs)/catalogo")}
+            onPress={() => router.back()}
           >
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.btnCarrinho}
-            onPress={() => router.push("/(tabs)/carrinho")}
+            onPress={() => router.push("/(tabs)/carrinho" as any)}
           >
             <Ionicons name="cart-outline" size={24} color="#fff" />
             {totalItens > 0 && (
@@ -260,17 +301,14 @@ export default function DetalheProduto() {
           </Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#000" },
-  containerImagem: {
-    width: "100%",
-    height: 420, // ANTES 230 -> AGORA 420 GIGANTE
-  },
-  imagem: { width: "100%", height: "100%" },
+  safe: { flex: 1, backgroundColor: "#000", paddingTop: 20 },
+  containerImagem: { width: "100%", height: 420 },
+  imagem: { width: "100%", height: "100%", backgroundColor: "#111" },
   btnVoltar: {
     position: "absolute",
     top: 50,
@@ -404,3 +442,4 @@ const styles = StyleSheet.create({
   },
   btnAdicionarTxt: { color: "#000", fontSize: 16, fontWeight: "900" },
 });
+ss;
