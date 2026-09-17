@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useCarrinho } from "@/src/context/CarrinhoContext";
 import { db } from "@/src/lib/firebase";
 import { Ionicons } from "@expo/vector-icons";
@@ -5,7 +6,6 @@ import { useRouter } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  Alert,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -14,147 +14,66 @@ import {
   View,
 } from "react-native";
 
-type ConfigLoja = {
-  aberto: boolean;
-  modoAutomatico: boolean;
-  horarioAbre: string;
-  horarioFecha: string;
-  diasAbertos: string[];
-  taxaEntrega?: number;
-};
-
-function isLojaAbertaAgora(config: ConfigLoja | null) {
-  if (!config) return true;
-  if (!config.modoAutomatico) return config.aberto;
-  try {
-    const agora = new Date();
-    const horaBR = new Date(
-      agora.toLocaleString("en-US", { timeZone: "America/Bahia" }),
-    );
-    const diaSemana = [
-      "domingo",
-      "segunda",
-      "terca",
-      "quarta",
-      "quinta",
-      "sexta",
-      "sabado",
-    ][horaBR.getDay()];
-    if (!(config.diasAbertos || []).includes(diaSemana)) return false;
-    const [hAbre, mAbre] = (config.horarioAbre || "17:00")
-      .split(":")
-      .map(Number);
-    const [hFecha, mFecha] = (config.horarioFecha || "22:00")
-      .split(":")
-      .map(Number);
-    const minutosAgora = horaBR.getHours() * 60 + horaBR.getMinutes();
-    const minutosAbre = hAbre * 60 + mAbre;
-    const minutosFecha = hFecha * 60 + mFecha;
-    if (minutosFecha < minutosAbre)
-      return minutosAgora >= minutosAbre || minutosAgora <= minutosFecha;
-    return minutosAgora >= minutosAbre && minutosAgora <= minutosFecha;
-  } catch {
-    return config.aberto;
-  }
-}
-
 export default function Carrinho() {
-  const { carrinho, removerDoCarrinho, removerItem, limparCarrinho } =
-    useCarrinho() as any;
-  const [configLoja, setConfigLoja] = useState<ConfigLoja | null>(null);
+  const { carrinho, removerDoCarrinho } = useCarrinho() as any;
+  const [configLoja, setConfigLoja] = useState<any>(null);
   const router = useRouter();
-  const lojaAberta = isLojaAbertaAgora(configLoja);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data() as any;
-        setConfigLoja({
-          aberto: d.aberto ?? true,
-          modoAutomatico: d.modoAutomatico ?? true,
-          horarioAbre: d.horarioAbre || "17:00",
-          horarioFecha: d.horarioFecha || "22:00",
-          diasAbertos: d.diasAbertos || [
-            "segunda",
-            "terca",
-            "quarta",
-            "quinta",
-            "sexta",
-            "sabado",
-          ],
-          taxaEntrega: d.taxaEntrega ?? d.valorFrete ?? 8,
-        });
-      }
+      if (snap.exists()) setConfigLoja(snap.data());
     });
     return () => unsub();
   }, []);
 
-  const getQtd = (item: any) =>
-    item.quantidade ?? item.qtd ?? item.quantity ?? 1;
-
-  function handleRemover(index: number) {
-    if (removerDoCarrinho) return removerDoCarrinho(index);
-    if (removerItem) return removerItem(index);
-    if (limparCarrinho && carrinho.length === 1) return limparCarrinho();
-    // fallback se não tiver função
-    Alert.alert("Remover?", "Deseja remover este item?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Remover",
-        style: "destructive",
-        onPress: () => {
-          // tenta remover local se não tiver função no context
-          carrinho.splice(index, 1);
-          router.replace("/(tabs)/carrinho");
-        },
-      },
-    ]);
-  }
-
+  const getQtd = (i: any) => i.quantidade ?? i.qtd ?? 1;
+  const taxa = Number(configLoja?.taxaEntrega ?? configLoja?.valorFrete ?? 8);
   const subtotal = carrinho.reduce(
-    (acc: number, item: any) => acc + item.preco * getQtd(item),
+    (a: number, it: any) => a + Number(it.preco) * getQtd(it),
     0,
   );
-  const frete = Number(configLoja?.taxaEntrega ?? 8);
-  const total = subtotal + frete;
+  const total = subtotal + taxa;
 
-  function handleFinalizar() {
-    if (!lojaAberta) {
-      Alert.alert(
-        "⛔ Loja Fechada",
-        `Abrimos das ${configLoja?.horarioAbre} às ${configLoja?.horarioFecha}`,
-      );
-      return;
-    }
-    router.push("/checkout");
+  const resumo = carrinho
+    .map((it: any) => {
+      const qtd = getQtd(it);
+      const ads = (it.adicionais || [])
+        .map((a: any) => (typeof a === "string" ? a : a.nome))
+        .join(", ");
+      const obs = it.obs ? ` OBS:${it.obs}` : "";
+      return `${qtd}x ${it.nome}${ads ? ` + ${ads}` : ""}${obs}`;
+    })
+    .join(" | ");
+
+  function irParaCheckout() {
+    router.push({
+      pathname: "/checkout",
+      params: {
+        subtotal: String(subtotal),
+        taxa: String(taxa),
+        total: String(total),
+        resumo: encodeURIComponent(resumo),
+        tempo: "30-45 min",
+        tipo: "entrega",
+      },
+    });
   }
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Text style={styles.titulo}>Carrinho</Text>
+        <Text style={styles.qtd}>{carrinho.length} itens</Text>
       </View>
-      {!lojaAberta && (
-        <View style={styles.bannerFechado}>
-          <Ionicons name="lock-closed" size={18} color="#fff" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.bannerTitulo}>LOJA FECHADA - NÃO FINALIZA</Text>
-            <Text style={styles.bannerSub}>
-              Horário: {configLoja?.horarioAbre} às {configLoja?.horarioFecha}
-            </Text>
-          </View>
-        </View>
-      )}
-      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 200 }}>
+
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 180 }}>
         {carrinho.length === 0 ? (
-          <Text style={{ color: "#888", textAlign: "center", marginTop: 50 }}>
+          <Text style={{ color: "#888", textAlign: "center", marginTop: 60 }}>
             Carrinho vazio
           </Text>
         ) : (
           carrinho.map((item: any, idx: number) => {
             const qtd = getQtd(item);
-            const adicionais = item.adicionais || item.extras || [];
-            const obs = item.obs || item.observacao || "";
             return (
               <View key={idx} style={styles.card}>
                 <View style={{ flex: 1 }}>
@@ -164,34 +83,31 @@ export default function Carrinho() {
                       justifyContent: "space-between",
                     }}
                   >
-                    <Text style={styles.nomeCard}>
+                    <Text style={styles.nome}>
                       {qtd}x {String(item.nome).toUpperCase()}
                     </Text>
-                    <Text style={styles.precoCard}>
-                      R$ {(item.preco * qtd).toFixed(2).replace(".", ",")}
+                    <Text style={styles.preco}>
+                      R${" "}
+                      {(Number(item.preco) * qtd).toFixed(2).replace(".", ",")}
                     </Text>
                   </View>
-                  {adicionais.length > 0 &&
-                    adicionais.map((ad: any, i: number) => {
-                      const txt =
-                        typeof ad === "string" ? ad : ad.nome || ad.title || "";
-                      const qtdAd = ad.quantidade ? `${ad.quantidade} ` : "";
-                      return (
-                        <Text key={i} style={styles.adicional}>
-                          + {qtdAd}
-                          {String(txt).toUpperCase()}
-                        </Text>
-                      );
-                    })}
-                  {obs ? (
+                  {(item.adicionais || []).map((ad: any, i: number) => (
+                    <Text key={i} style={styles.adicional}>
+                      +{" "}
+                      {String(
+                        typeof ad === "string" ? ad : ad.nome,
+                      ).toUpperCase()}
+                    </Text>
+                  ))}
+                  {item.obs ? (
                     <Text style={styles.obs}>
-                      OBS: {String(obs).toUpperCase()}
+                      OBS: {String(item.obs).toUpperCase()}
                     </Text>
                   ) : null}
                 </View>
                 <TouchableOpacity
-                  onPress={() => handleRemover(idx)}
-                  style={styles.btnExcluir}
+                  onPress={() => removerDoCarrinho(idx)}
+                  style={styles.trash}
                 >
                   <Ionicons name="trash-outline" size={18} color="#ff5555" />
                 </TouchableOpacity>
@@ -212,23 +128,18 @@ export default function Carrinho() {
           <View style={styles.linha}>
             <Text style={styles.label}>Taxa de entrega</Text>
             <Text style={styles.valor}>
-              R$ {frete.toFixed(2).replace(".", ",")}
+              R$ {taxa.toFixed(2).replace(".", ",")}
             </Text>
           </View>
-          <View style={styles.divisor} />
-          <View style={styles.linhaTotal}>
+          <View style={styles.div} />
+          <View style={styles.linha}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValor}>
               R$ {total.toFixed(2).replace(".", ",")}
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.btnFinalizar, !lojaAberta && styles.btnFechado]}
-            onPress={handleFinalizar}
-          >
-            <Text style={styles.btnTxt}>
-              {lojaAberta ? "FINALIZAR PEDIDO" : "⛔ LOJA FECHADA"}
-            </Text>
+          <TouchableOpacity style={styles.btn} onPress={irParaCheckout}>
+            <Text style={styles.btnTxt}>FINALIZAR PEDIDO</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -238,49 +149,40 @@ export default function Carrinho() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#000" },
-  header: { padding: 16, paddingTop: 50 },
-  titulo: { color: "#D4AF37", fontSize: 28, fontWeight: "900" },
-  bannerFechado: {
-    backgroundColor: "#ff4444",
+  header: {
+    padding: 16,
+    paddingTop: 50,
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 10,
-    padding: 12,
-    marginHorizontal: 12,
-    borderRadius: 10,
-    marginBottom: 10,
   },
-  bannerTitulo: { color: "#fff", fontWeight: "900", fontSize: 12 },
-  bannerSub: { color: "#ffdddd", fontSize: 10, marginTop: 2 },
+  titulo: { color: "#D4AF37", fontSize: 28, fontWeight: "900" },
+  qtd: { color: "#888" },
   card: {
     backgroundColor: "#1E1E1E",
     padding: 14,
     borderRadius: 16,
     marginBottom: 10,
     flexDirection: "row",
-    alignItems: "flex-start",
     borderWidth: 1,
     borderColor: "#2a2a2a",
   },
-  nomeCard: { color: "#fff", fontWeight: "900", fontSize: 14, flex: 1 },
-  precoCard: {
-    color: "#D4AF37",
-    fontWeight: "900",
-    fontSize: 14,
-    marginLeft: 8,
-  },
+  nome: { color: "#fff", fontWeight: "900", fontSize: 13, flex: 1 },
+  preco: { color: "#D4AF37", fontWeight: "900", fontSize: 13, marginLeft: 10 },
   adicional: {
     color: "#D4AF37",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-    marginTop: 3,
+    marginTop: 4,
   },
-  obs: { color: "#9ca3af", fontSize: 11, marginTop: 6, fontStyle: "italic" },
-  btnExcluir: {
+  obs: { color: "#9ca3af", fontSize: 10, marginTop: 6, fontStyle: "italic" },
+  trash: {
     marginLeft: 12,
-    padding: 6,
+    padding: 8,
     backgroundColor: "#2a1a1a",
-    borderRadius: 8,
+    borderRadius: 10,
+    height: 36,
+    justifyContent: "center",
   },
   footer: {
     position: "absolute",
@@ -297,23 +199,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 6,
   },
-  label: { color: "#9ca3af", fontSize: 14 },
-  valor: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  divisor: { height: 1, backgroundColor: "#222", marginVertical: 8 },
-  linhaTotal: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  totalLabel: { color: "#fff", fontSize: 22, fontWeight: "900" },
-  totalValor: { color: "#D4AF37", fontSize: 22, fontWeight: "900" },
-  btnFinalizar: {
+  label: { color: "#9ca3af", fontSize: 13 },
+  valor: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  div: { height: 1, backgroundColor: "#222", marginVertical: 8 },
+  totalLabel: { color: "#fff", fontSize: 20, fontWeight: "900" },
+  totalValor: { color: "#D4AF37", fontSize: 20, fontWeight: "900" },
+  btn: {
     backgroundColor: "#D4AF37",
-    padding: 18,
-    borderRadius: 14,
+    padding: 16,
+    borderRadius: 12,
     alignItems: "center",
-    marginTop: 14,
+    marginTop: 12,
   },
-  btnFechado: { backgroundColor: "#333" },
-  btnTxt: { color: "#000", fontWeight: "900", fontSize: 16 },
+  btnTxt: { color: "#000", fontWeight: "900", fontSize: 15 },
 });

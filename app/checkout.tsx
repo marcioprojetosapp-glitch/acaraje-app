@@ -24,8 +24,7 @@ import {
 export default function Checkout() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { carrinho, total: totalContext } = useCarrinho();
-
+  const { carrinho } = useCarrinho();
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [endereco, setEndereco] = useState("");
@@ -34,8 +33,9 @@ export default function Checkout() {
   const [trocoPara, setTrocoPara] = useState("");
   const [config, setConfig] = useState({ taxaEntrega: 8 });
   const [erros, setErros] = useState({ nome: false, zap: false, end: false });
+  const [salvando, setSalvando] = useState(false);
 
-  const subtotalParam = Number(params.subtotal) || totalContext || 0;
+  const subtotalParam = Number(params.subtotal) || 0;
   const taxaParam = Number(params.taxa) || 0;
   const totalParam = Number(params.total) || subtotalParam + taxaParam;
   const resumoParam = params.resumo
@@ -56,17 +56,10 @@ export default function Checkout() {
   const frete = isRetirada ? 0 : taxaParam || Number(config.taxaEntrega || 8);
   const subtotal = subtotalParam;
   const totalFinal = isRetirada ? subtotal : totalParam;
-  const valorTrocoPara =
-    Number(String(trocoPara).replace(",", ".").replace("R$", "")) || 0;
-  const troco = valorTrocoPara - totalFinal;
 
   const mostrarAlerta = (titulo, msg) => {
-    if (Platform.OS === "web") {
-      // @ts-ignore
-      window.alert(`${titulo}\n\n${msg}`);
-    } else {
-      Alert.alert(titulo, msg);
-    }
+    if (Platform.OS === "web") window.alert(`${titulo}\n\n${msg}`);
+    else Alert.alert(titulo, msg);
   };
 
   const finalizar = async () => {
@@ -76,19 +69,23 @@ export default function Checkout() {
       end: !isRetirada && !endereco.trim(),
     };
     setErros(e);
-
     if (e.nome || e.zap || e.end) {
       mostrarAlerta(
         "⚠️ PREENCHA SEUS DADOS",
-        `${e.nome ? "• Nome completo\n" : ""}${e.zap ? "• WhatsApp válido\n" : ""}${e.end ? "• Endereço completo" : ""}`,
+        `${e.nome ? "• Nome\n" : ""}${e.zap ? "• WhatsApp\n" : ""}${e.end ? "• Endereço" : ""}`,
       );
       return;
     }
     if (formaPagamento === "DINHEIRO" && !trocoPara) {
-      mostrarAlerta("Troco", "Digite para quanto precisa de troco, ex: 50");
+      mostrarAlerta("Troco", "Digite para quanto precisa de troco");
+      return;
+    }
+    if (carrinho.length === 0 && !resumoParam) {
+      mostrarAlerta("Carrinho vazio", "Volte e adicione itens");
       return;
     }
 
+    setSalvando(true);
     const pedido = {
       nome,
       whatsapp: whatsapp.replace(/\D/g, ""),
@@ -97,13 +94,11 @@ export default function Checkout() {
       tipoEntrega,
       formaPagamento,
       trocoPara: formaPagamento === "DINHEIRO" ? trocoPara : null,
-      troco: formaPagamento === "DINHEIRO" && troco > 0 ? troco : 0,
       total: totalFinal.toFixed(2),
       subtotal: subtotal.toFixed(2),
       taxaEntrega: frete,
-      itens: carrinho.length > 0 ? carrinho : [{ nome: resumoParam }],
+      itens: carrinho,
       resumo: resumoParam,
-      resumoDetalhado: resumoParam,
       status:
         formaPagamento === "DINHEIRO"
           ? "aguardando_confirmacao"
@@ -116,17 +111,17 @@ export default function Checkout() {
     };
 
     try {
+      const docRef = await addDoc(collection(db, "pedidos"), pedido);
       if (formaPagamento === "DINHEIRO") {
-        await addDoc(collection(db, "pedidos"), pedido);
-        mostrarAlerta("✅ Pedido enviado!", "Vamos confirmar seu pagamento!");
+        mostrarAlerta("✅ Pedido enviado!", "Vamos confirmar no WhatsApp!");
         router.replace("/");
       } else {
-        router.push(
-          `/pagamento?dados=${encodeURIComponent(JSON.stringify(pedido))}`,
-        );
+        router.push(`/pagamento?pedidoId=${docRef.id}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       mostrarAlerta("Erro", err.message);
+    } finally {
+      setSalvando(false);
     }
   };
 
@@ -156,7 +151,6 @@ export default function Checkout() {
           Confira
         </Text>
       </View>
-
       <View
         style={{
           backgroundColor: "#1E1E1E",
@@ -167,14 +161,12 @@ export default function Checkout() {
           borderColor: "#333",
         }}
       >
-        <Text style={{ color: "#D4AF37", fontWeight: "900", fontSize: 14 }}>
-          TOTAL
-        </Text>
+        <Text style={{ color: "#D4AF37", fontWeight: "900" }}>TOTAL</Text>
         <Text style={{ color: "#fff", marginTop: 4 }}>
           Subtotal: R$ {subtotal.toFixed(2).replace(".", ",")}
         </Text>
         <Text style={{ color: frete === 0 ? "#00FF7F" : "#aaa", marginTop: 2 }}>
-          Frete ({tempoParam || (isRetirada ? "retirada" : "entrega")}):{" "}
+          Frete:{" "}
           {frete === 0 ? "GRÁTIS" : `R$ ${frete.toFixed(2).replace(".", ",")}`}
         </Text>
         <Text
@@ -208,20 +200,12 @@ export default function Checkout() {
             >
               SEU PEDIDO:
             </Text>
-            <Text
-              style={{
-                color: "#FFFFFF",
-                fontSize: 14,
-                fontWeight: "800",
-                lineHeight: 20,
-              }}
-            >
+            <Text style={{ color: "#FFF", fontSize: 14, fontWeight: "800" }}>
               {resumoParam}
             </Text>
           </View>
         ) : null}
       </View>
-
       <TextInput
         placeholder="Seu nome completo *"
         placeholderTextColor="#777"
@@ -240,19 +224,6 @@ export default function Checkout() {
           borderColor: erros.nome ? "#ff3333" : "#333",
         }}
       />
-      {erros.nome && (
-        <Text
-          style={{
-            color: "#ff3333",
-            fontSize: 12,
-            marginBottom: 10,
-            marginLeft: 4,
-          }}
-        >
-          ⚠️ Digite seu nome
-        </Text>
-      )}
-
       <TextInput
         placeholder="WhatsApp * (com DDD)"
         placeholderTextColor="#777"
@@ -272,56 +243,28 @@ export default function Checkout() {
           borderColor: erros.zap ? "#ff3333" : "#333",
         }}
       />
-      {erros.zap && (
-        <Text
-          style={{
-            color: "#ff3333",
-            fontSize: 12,
-            marginBottom: 10,
-            marginLeft: 4,
-          }}
-        >
-          ⚠️ WhatsApp obrigatório
-        </Text>
-      )}
-
       {!isRetirada && (
-        <>
-          <TextInput
-            placeholder="Endereço completo * - Rua, Nº, Bairro"
-            placeholderTextColor="#777"
-            value={endereco}
-            onChangeText={(t) => {
-              setEndereco(t);
-              setErros((p) => ({ ...p, end: false }));
-            }}
-            style={{
-              backgroundColor: "#1E1E1E",
-              color: "#fff",
-              padding: 16,
-              borderRadius: 14,
-              marginBottom: 6,
-              height: 80,
-              borderWidth: 2,
-              borderColor: erros.end ? "#ff3333" : "#333",
-            }}
-            multiline
-          />
-          {erros.end && (
-            <Text
-              style={{
-                color: "#ff3333",
-                fontSize: 12,
-                marginBottom: 10,
-                marginLeft: 4,
-              }}
-            >
-              ⚠️ Endereço obrigatório para entrega
-            </Text>
-          )}
-        </>
+        <TextInput
+          placeholder="Endereço completo *"
+          placeholderTextColor="#777"
+          value={endereco}
+          onChangeText={(t) => {
+            setEndereco(t);
+            setErros((p) => ({ ...p, end: false }));
+          }}
+          style={{
+            backgroundColor: "#1E1E1E",
+            color: "#fff",
+            padding: 16,
+            borderRadius: 14,
+            marginBottom: 6,
+            height: 80,
+            borderWidth: 2,
+            borderColor: erros.end ? "#ff3333" : "#333",
+          }}
+          multiline
+        />
       )}
-
       <Text
         style={{
           color: "#D4AF37",
@@ -332,7 +275,6 @@ export default function Checkout() {
       >
         FORMA DE PAGAMENTO
       </Text>
-
       <TouchableOpacity
         onPress={() => setFormaPagamento("PIX")}
         style={{
@@ -350,10 +292,9 @@ export default function Checkout() {
             fontWeight: "900",
           }}
         >
-          💚 PIX - Aprovação na hora {formaPagamento === "PIX" ? "✓" : ""}
+          💚 PIX {formaPagamento === "PIX" ? "✓" : ""}
         </Text>
       </TouchableOpacity>
-
       <TouchableOpacity
         onPress={() => setFormaPagamento("CARTAO")}
         style={{
@@ -371,10 +312,9 @@ export default function Checkout() {
             fontWeight: "900",
           }}
         >
-          💳 Cartão de Crédito {formaPagamento === "CARTAO" ? "✓" : ""}
+          💳 Cartão {formaPagamento === "CARTAO" ? "✓" : ""}
         </Text>
       </TouchableOpacity>
-
       <TouchableOpacity
         onPress={() => setFormaPagamento("DINHEIRO")}
         style={{
@@ -397,7 +337,6 @@ export default function Checkout() {
           {formaPagamento === "DINHEIRO" ? "✓" : ""}
         </Text>
       </TouchableOpacity>
-
       {formaPagamento === "DINHEIRO" && (
         <View
           style={{
@@ -432,18 +371,13 @@ export default function Checkout() {
               borderRadius: 10,
             }}
           />
-          {troco > 0 && (
-            <Text style={{ color: "#00FF7F", marginTop: 8, fontWeight: "900" }}>
-              Seu troco: R$ {troco.toFixed(2).replace(".", ",")}
-            </Text>
-          )}
         </View>
       )}
-
       <TouchableOpacity
         onPress={finalizar}
+        disabled={salvando}
         style={{
-          backgroundColor: "#D4AF37",
+          backgroundColor: salvando ? "#555" : "#D4AF37",
           padding: 18,
           borderRadius: 14,
           alignItems: "center",
@@ -452,9 +386,11 @@ export default function Checkout() {
         }}
       >
         <Text style={{ fontWeight: "900", fontSize: 16, color: "#000" }}>
-          {formaPagamento === "DINHEIRO"
-            ? "ENVIAR PEDIDO 💵"
-            : "IR PARA PAGAMENTO"}
+          {salvando
+            ? "SALVANDO..."
+            : formaPagamento === "DINHEIRO"
+              ? "ENVIAR PEDIDO 💵"
+              : "IR PARA PAGAMENTO"}
         </Text>
       </TouchableOpacity>
     </ScrollView>
