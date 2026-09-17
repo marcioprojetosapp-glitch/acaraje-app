@@ -442,4 +442,3 @@ const styles = StyleSheet.create({
   },
   btnAdicionarTxt: { color: "#000", fontSize: 16, fontWeight: "900" },
 });
-ss;
