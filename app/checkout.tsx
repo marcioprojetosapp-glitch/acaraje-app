@@ -3,36 +3,44 @@ import { useCarrinho } from "@/src/context/CarrinhoContext";
 import { db } from "@/src/lib/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { doc, onSnapshot } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
-export default function Carrinho() {
-  const { carrinho, removerDoCarrinho } = useCarrinho() as any;
-  const [configLoja, setConfigLoja] = useState<any>(null);
+export default function Checkout() {
+  const { carrinho, limparCarrinho } = useCarrinho() as any;
   const router = useRouter();
+  const [config, setConfig] = useState<any>(null);
+  const [nome, setNome] = useState("");
+  const [tel, setTel] = useState("");
+  const [end, setEnd] = useState("");
+  const [pag, setPag] = useState("pix");
+  const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
-    try {
-      const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
-        if (snap.exists()) setConfigLoja(snap.data());
-      });
-      return () => unsub();
-    } catch {
-      return;
-    }
+    const unsub = onSnapshot(doc(db, "config", "loja"), (s) => {
+      if (s.exists()) setConfig(s.data());
+    });
+    return () => unsub();
   }, []);
 
   const getQtd = (i: any) => Number(i?.quantidade ?? i?.qtd ?? 1) || 1;
   const getPreco = (i: any) => Number(i?.preco ?? 0) || 0;
-
-  const taxa = Number(configLoja?.taxaEntrega ?? configLoja?.valorFrete ?? 8);
+  const taxa = Number(config?.taxaEntrega ?? 8);
   const subtotal = (carrinho || []).reduce(
     (a: number, it: any) => a + getPreco(it) * getQtd(it),
     0,
@@ -43,26 +51,61 @@ export default function Carrinho() {
     .map((it: any) => {
       const qtd = getQtd(it);
       const ads = (it.adicionais || [])
-        .map((a: any) => (typeof a === "string" ? a : a?.nome || ""))
-        .filter(Boolean)
+        .map((a: any) => (typeof a === "string" ? a : a?.nome))
         .join(", ");
-      const obs = it.obs ? ` OBS:${it.obs}` : "";
-      return `${qtd}x ${it.nome || "Item"}${ads ? ` + ${ads}` : ""}${obs}`;
+      return `${qtd}x ${it.nome}${ads ? ` + ${ads}` : ""}${it.obs ? ` OBS:${it.obs}` : ""}`;
     })
     .join(" | ");
 
-  function irParaCheckout() {
-    if (!carrinho?.length) return;
-    // NÃO usa encodeURIComponent aqui, o router já faz
-    const params = new URLSearchParams({
-      subtotal: String(subtotal),
-      taxa: String(taxa),
-      total: String(total),
-      resumo: resumo || "pedido",
-      tempo: "30-45 min",
-      tipo: "entrega",
-    });
-    router.push(`/checkout?${params.toString()}` as any);
+  async function finalizar() {
+    if (!nome.trim() || !tel.trim() || !end.trim()) {
+      Alert.alert("Falta info", "Preencha nome, WhatsApp e endereço");
+      return;
+    }
+    if (!carrinho?.length) {
+      router.replace("/" as any);
+      return;
+    }
+    try {
+      setEnviando(true);
+      await addDoc(collection(db, "pedidos"), {
+        cliente: nome.trim(),
+        telefone: tel.trim(),
+        endereco: end.trim(),
+        pagamento: pag,
+        subtotal,
+        taxa,
+        total,
+        resumo,
+        itens: carrinho,
+        status: "novo",
+        criadoEm: serverTimestamp(),
+      });
+      if (limparCarrinho) limparCarrinho();
+      Alert.alert("Pedido enviado!", "Já recebemos seu pedido");
+      router.replace("/" as any);
+    } catch (e) {
+      console.log(e);
+      Alert.alert("Erro", "Não deu pra enviar, tenta de novo");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (!carrinho?.length) {
+    return (
+      <View style={styles.safe}>
+        <Text style={{ color: "#fff", padding: 20, marginTop: 50 }}>
+          Carrinho vazio
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.replace("/" as any)}
+          style={styles.btn}
+        >
+          <Text style={styles.btnTxt}>VOLTAR AO CARDÁPIO</Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   return (
@@ -71,88 +114,80 @@ export default function Carrinho() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#D4AF37" />
         </TouchableOpacity>
-        <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={styles.titulo}>Carrinho</Text>
-          <Text style={styles.qtd}>{(carrinho || []).length} itens</Text>
-        </View>
+        <Text style={styles.titulo}>Finalizar Pedido</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 180 }}>
-        {!carrinho || carrinho.length === 0 ? (
-          <Text style={{ color: "#888", textAlign: "center", marginTop: 60 }}>
-            Carrinho vazio
-          </Text>
-        ) : (
-          carrinho.map((item: any, idx: number) => {
-            const qtd = getQtd(item);
-            return (
-              <View key={idx} style={styles.card}>
-                <View style={{ flex: 1 }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <Text style={styles.nome}>
-                      {qtd}x {String(item.nome || "ITEM").toUpperCase()}
-                    </Text>
-                    <Text style={styles.preco}>
-                      R$ {(getPreco(item) * qtd).toFixed(2).replace(".", ",")}
-                    </Text>
-                  </View>
-                  {(item.adicionais || []).map((ad: any, i: number) => (
-                    <Text key={i} style={styles.adicional}>
-                      +{" "}
-                      {String(
-                        typeof ad === "string" ? ad : ad.nome,
-                      ).toUpperCase()}
-                    </Text>
-                  ))}
-                  {item.obs ? (
-                    <Text style={styles.obs}>
-                      OBS: {String(item.obs).toUpperCase()}
-                    </Text>
-                  ) : null}
-                </View>
-                <TouchableOpacity
-                  onPress={() => removerDoCarrinho(idx)}
-                  style={styles.trash}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#ff5555" />
-                </TouchableOpacity>
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
-
-      {(carrinho || []).length > 0 && (
-        <View style={styles.footer}>
-          <View style={styles.linha}>
-            <Text style={styles.label}>Subtotal</Text>
-            <Text style={styles.valor}>
-              R$ {subtotal.toFixed(2).replace(".", ",")}
-            </Text>
-          </View>
-          <View style={styles.linha}>
-            <Text style={styles.label}>Taxa de entrega</Text>
-            <Text style={styles.valor}>
-              R$ {taxa.toFixed(2).replace(".", ",")}
-            </Text>
-          </View>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 200 }}>
+        <View style={styles.card}>
+          <Text style={styles.labR}>RESUMO</Text>
+          <Text style={{ color: "#fff", lineHeight: 20 }}>{resumo}</Text>
           <View style={styles.div} />
-          <View style={styles.linha}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValor}>
+          <View
+            style={{ flexDirection: "row", justifyContent: "space-between" }}
+          >
+            <Text style={{ color: "#9ca3af" }}>Total</Text>
+            <Text style={{ color: "#D4AF37", fontWeight: "900", fontSize: 16 }}>
               R$ {total.toFixed(2).replace(".", ",")}
             </Text>
           </View>
-          <TouchableOpacity style={styles.btn} onPress={irParaCheckout}>
-            <Text style={styles.btnTxt}>FINALIZAR PEDIDO</Text>
-          </TouchableOpacity>
         </View>
-      )}
+
+        <Text style={styles.lab}>Seu nome *</Text>
+        <TextInput
+          style={styles.input}
+          value={nome}
+          onChangeText={setNome}
+          placeholder="Ex: Maria"
+          placeholderTextColor="#666"
+        />
+
+        <Text style={styles.lab}>WhatsApp *</Text>
+        <TextInput
+          style={styles.input}
+          value={tel}
+          onChangeText={setTel}
+          placeholder="71 99999-9999"
+          placeholderTextColor="#666"
+          keyboardType="phone-pad"
+        />
+
+        <Text style={styles.lab}>Endereço completo *</Text>
+        <TextInput
+          style={styles.input}
+          value={end}
+          onChangeText={setEnd}
+          placeholder="Rua, número, bairro, ponto de referência"
+          placeholderTextColor="#666"
+          multiline
+        />
+
+        <Text style={styles.lab}>Pagamento</Text>
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 24 }}>
+          {["pix", "dinheiro", "cartao"].map((p) => (
+            <TouchableOpacity
+              key={p}
+              onPress={() => setPag(p)}
+              style={[styles.pagBtn, pag === p && styles.pagAtivo]}
+            >
+              <Text style={[styles.pagTxt, pag === p && { color: "#000" }]}>
+                {p.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.btn, enviando && { opacity: 0.6 }]}
+          onPress={finalizar}
+          disabled={enviando}
+        >
+          <Text style={styles.btnTxt}>
+            {enviando
+              ? "ENVIANDO..."
+              : `CONFIRMAR - R$ ${total.toFixed(2).replace(".", ",")}`}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
@@ -161,9 +196,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#000", paddingTop: 45 },
   header: {
     padding: 16,
-    paddingTop: 50,
     flexDirection: "row",
     alignItems: "center",
+    gap: 12,
+    paddingTop: 20,
   },
   backBtn: {
     backgroundColor: "#1E1E1E",
@@ -172,60 +208,50 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
   },
-  titulo: { color: "#D4AF37", fontSize: 28, fontWeight: "900" },
-  qtd: { color: "#888", fontSize: 12 },
+  titulo: { color: "#D4AF37", fontSize: 20, fontWeight: "900" },
   card: {
     backgroundColor: "#1E1E1E",
     padding: 14,
-    borderRadius: 16,
-    marginBottom: 10,
-    flexDirection: "row",
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#2a2a2a",
+    marginBottom: 20,
   },
-  nome: { color: "#fff", fontWeight: "900", fontSize: 13, flex: 1 },
-  preco: { color: "#D4AF37", fontWeight: "900", fontSize: 13, marginLeft: 10 },
-  adicional: {
+  labR: { color: "#D4AF37", fontSize: 11, fontWeight: "900", marginBottom: 6 },
+  div: { height: 1, backgroundColor: "#222", marginVertical: 10 },
+  lab: {
     color: "#D4AF37",
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 6,
     marginTop: 4,
   },
-  obs: { color: "#9ca3af", fontSize: 10, marginTop: 6, fontStyle: "italic" },
-  trash: {
-    marginLeft: 12,
-    padding: 8,
-    backgroundColor: "#2a1a1a",
+  input: {
+    backgroundColor: "#1E1E1E",
+    color: "#fff",
+    borderWidth: 1,
+    borderColor: "#333",
     borderRadius: 10,
-    height: 36,
-    justifyContent: "center",
+    padding: 14,
+    marginBottom: 14,
   },
-  footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "#111",
-    padding: 16,
-    borderTopWidth: 1,
-    borderColor: "#222",
+  pagBtn: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#333",
+    alignItems: "center",
+    backgroundColor: "#1E1E1E",
   },
-  linha: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  label: { color: "#9ca3af", fontSize: 13 },
-  valor: { color: "#fff", fontWeight: "700", fontSize: 13 },
-  div: { height: 1, backgroundColor: "#222", marginVertical: 8 },
-  totalLabel: { color: "#fff", fontSize: 20, fontWeight: "900" },
-  totalValor: { color: "#D4AF37", fontSize: 20, fontWeight: "900" },
+  pagAtivo: { backgroundColor: "#D4AF37", borderColor: "#D4AF37" },
+  pagTxt: { color: "#888", fontWeight: "900", fontSize: 12 },
   btn: {
     backgroundColor: "#D4AF37",
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: 12,
+    marginTop: 10,
   },
   btnTxt: { color: "#000", fontWeight: "900", fontSize: 15 },
 });
