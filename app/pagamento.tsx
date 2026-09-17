@@ -1,12 +1,21 @@
 // @ts-nocheck
 import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -18,66 +27,86 @@ import { useCarrinho } from "../src/context/CarrinhoContext";
 import { db } from "../src/lib/firebase";
 
 export default function Pagamento() {
-  const { pedidoId } = useLocalSearchParams();
+  const params = useLocalSearchParams() as any;
+  const pedidoId = params.pedidoId as string;
+  const dadosParam = params.dados as string;
   const router = useRouter();
   const { limparCarrinho } = useCarrinho();
   const [loading, setLoading] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState("");
   const [email, setEmail] = useState("");
   const [mostrarEmail, setMostrarEmail] = useState(false);
-  const [aguardandoConfirmacao, setAguardandoConfirmacao] = useState(false);
   const [pixData, setPixData] = useState<any>(null);
   const [pedido, setPedido] = useState<any>(null);
+  const [idReal, setIdReal] = useState(pedidoId);
+
+  // SE VEIO PELO FLUXO ANTIGO ?dados= , CRIA O PEDIDO AQUI E EVITA TELA BRANCA
+  useEffect(() => {
+    if (!pedidoId && dadosParam) {
+      (async () => {
+        try {
+          const obj = JSON.parse(decodeURIComponent(dadosParam));
+          const ref = await addDoc(collection(db, "pedidos"), {
+            ...obj,
+            status: "aguardando_pagamento",
+            statusPagamento: "pendente",
+            criadoEm: serverTimestamp(),
+          });
+          setIdReal(ref.id);
+          router.replace(`/pagamento?pedidoId=${ref.id}`);
+        } catch (e) {
+          console.log("erro dadosParam", e);
+        }
+      })();
+    } else {
+      setIdReal(pedidoId);
+    }
+  }, [pedidoId, dadosParam]);
 
   useEffect(() => {
-    if (!pedidoId) return;
-    const unsub = onSnapshot(
-      doc(db, "pedidos", pedidoId as string),
-      async (snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data();
-        setPedido(data);
-        if (
-          (data?.statusPagamento === "approved" || data?.status === "pago") &&
-          !data?.estoqueBaixado
-        ) {
-          try {
-            const itens = data?.itens || [];
-            for (const item of itens) {
-              const idProduto = item.id || item.itemId || item.produtoId;
-              if (!idProduto) continue;
-              const ref = doc(db, "produtos", idProduto);
-              const prodSnap = await getDoc(ref);
-              if (prodSnap.exists()) {
-                const atual = prodSnap.data().estoque ?? 0;
-                const qtd = item.qtd ?? item.quantidade ?? 1;
-                const novo = Math.max(0, atual - qtd);
-                await updateDoc(ref, { estoque: novo, disponivel: novo > 0 });
-              }
+    if (!idReal) return;
+    const unsub = onSnapshot(doc(db, "pedidos", idReal), async (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      setPedido(data);
+      if (
+        (data?.statusPagamento === "approved" || data?.status === "pago") &&
+        !data?.estoqueBaixado
+      ) {
+        try {
+          const itens = data?.itens || [];
+          for (const item of itens) {
+            const idProduto = item.id || item.itemId || item.produtoId;
+            if (!idProduto) continue;
+            const ref = doc(db, "produtos", idProduto);
+            const prodSnap = await getDoc(ref);
+            if (prodSnap.exists()) {
+              const atual = prodSnap.data().estoque ?? 0;
+              const qtd = item.qtd ?? item.quantidade ?? 1;
+              const novo = Math.max(0, atual - qtd);
+              await updateDoc(ref, { estoque: novo, disponivel: novo > 0 });
             }
-            // TRAVA PRA NÃO BAIXAR 2 VEZES
-            await updateDoc(doc(db, "pedidos", pedidoId as string), {
-              estoqueBaixado: true,
-              estoqueBaixadoEm: new Date(),
-            });
-          } catch (e) {
-            console.log("Erro baixa estoque", e);
           }
-          limparCarrinho();
-          router.replace("/sucesso");
+          await updateDoc(doc(db, "pedidos", idReal), {
+            estoqueBaixado: true,
+            estoqueBaixadoEm: new Date(),
+          });
+        } catch (e) {
+          console.log("Erro baixa estoque", e);
         }
-        // Se já foi baixado, só vai pro sucesso
-        if (
-          (data?.statusPagamento === "approved" || data?.status === "pago") &&
-          data?.estoqueBaixado
-        ) {
-          limparCarrinho();
-          router.replace("/sucesso");
-        }
-      },
-    );
+        limparCarrinho();
+        router.replace("/sucesso");
+      }
+      if (
+        (data?.statusPagamento === "approved" || data?.status === "pago") &&
+        data?.estoqueBaixado
+      ) {
+        limparCarrinho();
+        router.replace("/sucesso");
+      }
+    });
     return () => unsub();
-  }, [pedidoId]);
+  }, [idReal]);
 
   const criarLink = async (tipo: "pix" | "cartao") => {
     try {
@@ -91,11 +120,10 @@ export default function Pagamento() {
         return;
       }
       setLoading(true);
-      if (!pedidoId) {
+      if (!idReal) {
         Alert.alert("Erro", "Pedido não encontrado");
         return;
       }
-
       const response = await fetch(
         "https://criarpagamento-2mfyfptukq-uc.a.run.app",
         {
@@ -103,27 +131,24 @@ export default function Pagamento() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             tipo,
-            external_reference: pedidoId,
+            external_reference: idReal,
             email: tipo === "cartao" ? email : undefined,
           }),
         },
       );
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || JSON.stringify(result));
-      }
-
+      if (!response.ok) throw new Error(result.error || JSON.stringify(result));
       if (result.tipo === "pix_direto") {
         setPixData(result);
-        setAguardandoConfirmacao(true);
         return;
       }
-
       const link = result.init_point || result.sandbox_init_point;
       if (link) {
         setCheckoutUrl(link);
-        setAguardandoConfirmacao(true);
+        // NA WEB NÃO USA WEBVIEW - SENÃO FICA TELA BRANCA
+        if (Platform.OS === "web") {
+          window.open(link, "_blank");
+        }
       } else {
         Alert.alert("Erro MP", JSON.stringify(result).slice(0, 400));
       }
@@ -140,6 +165,24 @@ export default function Pagamento() {
       Alert.alert("Copiado!", "Código PIX copiado");
     }
   };
+
+  if (!idReal) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#000",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <ActivityIndicator color="#D4AF37" />
+        <Text style={{ color: "#fff", marginTop: 10 }}>
+          Carregando pedido...
+        </Text>
+      </View>
+    );
+  }
 
   if (pixData) {
     return (
@@ -158,10 +201,8 @@ export default function Pagamento() {
           Pague com PIX
         </Text>
         <Text style={{ color: "#fff", marginTop: 10, fontSize: 18 }}>
-          Total: R${" "}
-          {pedido?.total?.toFixed(2) || pixData.totalCobrado?.toFixed(2)}
+          Total: R$ {pedido?.total || pixData.totalCobrado?.toFixed(2)}
         </Text>
-
         {pixData.qr_code_base64 && (
           <View
             style={{
@@ -179,7 +220,6 @@ export default function Pagamento() {
             />
           </View>
         )}
-
         <View
           style={{
             backgroundColor: "#1a1a1a",
@@ -196,7 +236,6 @@ export default function Pagamento() {
             {pixData.qr_code}
           </Text>
         </View>
-
         <TouchableOpacity
           onPress={copiarPix}
           style={{
@@ -212,7 +251,6 @@ export default function Pagamento() {
             COPIAR CÓDIGO PIX
           </Text>
         </TouchableOpacity>
-
         <View
           style={{ marginTop: 30, flexDirection: "row", alignItems: "center" }}
         >
@@ -229,7 +267,62 @@ export default function Pagamento() {
     );
   }
 
-  if (checkoutUrl)
+  if (checkoutUrl) {
+    if (Platform.OS === "web") {
+      return (
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#000",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+          }}
+        >
+          <Text
+            style={{
+              color: "#D4AF37",
+              fontSize: 22,
+              fontWeight: "bold",
+              textAlign: "center",
+            }}
+          >
+            Checkout aberto em outra aba!
+          </Text>
+          <Text style={{ color: "#fff", marginTop: 10, textAlign: "center" }}>
+            Finalize o pagamento no Mercado Pago. Depois volte aqui, vamos
+            detectar automático.
+          </Text>
+          <TouchableOpacity
+            onPress={() => window.open(checkoutUrl, "_blank")}
+            style={{
+              backgroundColor: "#D4AF37",
+              padding: 16,
+              borderRadius: 12,
+              marginTop: 20,
+              width: "100%",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#000", fontWeight: "bold" }}>
+              ABRIR MERCADO PAGO NOVAMENTE
+            </Text>
+          </TouchableOpacity>
+          <View
+            style={{
+              marginTop: 30,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <ActivityIndicator color="#D4AF37" />
+            <Text style={{ color: "#fff", marginLeft: 10 }}>
+              Aguardando confirmação...
+            </Text>
+          </View>
+        </View>
+      );
+    }
     return (
       <View style={{ flex: 1, backgroundColor: "#000" }}>
         <View
@@ -240,24 +333,13 @@ export default function Pagamento() {
           }}
         >
           <Text style={{ color: "#000", fontWeight: "bold" }}>
-            {aguardandoConfirmacao
-              ? "Aguardando confirmação do pagamento..."
-              : "Finalize no Mercado Pago"}
+            Finalize no Mercado Pago - Aguardando confirmação...
           </Text>
         </View>
-        <WebView
-          source={{ uri: checkoutUrl }}
-          onNavigationStateChange={(nav) => {
-            if (nav.url.includes("sucesso") || nav.url.includes("approved")) {
-              Alert.alert(
-                "Pagamento enviado!",
-                "Aguardando confirmação do Mercado Pago.",
-              );
-            }
-          }}
-        />
+        <WebView source={{ uri: checkoutUrl }} />
       </View>
     );
+  }
 
   return (
     <View
@@ -277,12 +359,11 @@ export default function Pagamento() {
           color: "#D4AF37",
         }}
       >
-        Pedido #{(pedidoId as string)?.slice(0, 5)}
+        Pedido #{idReal?.slice(0, 5)}
       </Text>
       <Text style={{ color: "#888", marginBottom: 30 }}>
-        Escolha como quer pagar
+        Escolha como quer pagar - Total R$ {pedido?.total}
       </Text>
-
       {loading ? (
         <ActivityIndicator size="large" color="#D4AF37" />
       ) : (
@@ -302,7 +383,6 @@ export default function Pagamento() {
               PAGAR COM PIX
             </Text>
           </TouchableOpacity>
-
           {mostrarEmail && (
             <View style={{ width: "100%", marginBottom: 15 }}>
               <TextInput
@@ -324,7 +404,6 @@ export default function Pagamento() {
               />
             </View>
           )}
-
           <TouchableOpacity
             onPress={() => criarLink("cartao")}
             style={{
