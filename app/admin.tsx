@@ -161,42 +161,57 @@ export default function Admin() {
             const nomeP = (i.nome || "ITEM").toUpperCase();
             const pu = Number(i.preco || 0);
             let linha = `${qtd}x ${nomeP} - R$ ${pu.toFixed(2).replace(".", ",")} = R$ ${(pu * qtd).toFixed(2).replace(".", ",")}`;
-            const extras = [];
+            const extrasSet = new Set();
             if (Array.isArray(i.adicionais))
               i.adicionais.forEach((c) => {
                 const t = typeof c === "string" ? c : c.nome || "";
-                if (t) extras.push(" + " + String(t).toUpperCase());
+                if (t)
+                  String(t)
+                    .split(",")
+                    .forEach((s) => {
+                      if (s.trim()) extrasSet.add(s.trim().toUpperCase());
+                    });
               });
-            if (i.obs) extras.push(" + " + i.obs.toUpperCase());
+            if (i.obs)
+              String(i.obs)
+                .split(",")
+                .forEach((s) => {
+                  if (s.trim()) extrasSet.add(s.trim().toUpperCase());
+                });
+            if (i.observacao)
+              extrasSet.add("OBS: " + String(i.observacao).toUpperCase());
+            const extras = Array.from(extrasSet).map((e) => " + " + e);
             if (extras.length) linha += "\n" + extras.join("\n");
             return linha;
           })
           .join("\n\n")
       : montarResumoDetalhado(pedido);
 
-    const fazerPrint = (conteudo) => {
-      let iframe = document.getElementById("iframe-impressao");
-      if (!iframe) {
-        iframe = document.createElement("iframe");
-        iframe.id = "iframe-impressao";
-        iframe.style.position = "absolute";
-        iframe.style.width = "0";
-        iframe.style.height = "0";
-        iframe.style.border = "0";
-        document.body.appendChild(iframe);
-      }
-      const html = `<html><head><style>@page{size:80mm auto;margin:0}body{width:72mm;font-family:'Courier New',monospace;font-size:13px;padding:4mm;margin:0;color:#000}.titulo{text-align:center;font-weight:900;font-size:18px}.sub{text-align:center;font-size:11px}.linha{border-top:1px dashed #000;margin:8px 0}.linha2{border-top:2px solid #000;margin:8px 0}.big{font-size:16px;font-weight:900}</style></head><body>${conteudo}<div style='height:90px'></div><script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`;
-      const docIframe = iframe.contentDocument || iframe.contentWindow.document;
-      docIframe.open();
-      docIframe.write(html);
-      docIframe.close();
-    };
-
     const cupomCozinha = `<div class='titulo'>COZINHA - FRITAR</div><div class='sub'>${data} | #${idCurto}</div><div class='linha2'></div><div class='big'>${nomeCliente.toUpperCase()}</div><div class='linha'></div><div style='white-space:pre-wrap;font-weight:bold;line-height:19px;'>${resumo}</div><div class='linha2'></div><div style='text-align:center;font-weight:900;font-size:20px;'>*** COZINHA ***</div>`;
     const cupomMotoboy = `<div class='titulo'>ACARAJE DA BENCAO</div><div class='sub'>VIA ENTREGA | #${idCurto}<br>${data}</div><div class='linha2'></div><div><b>CLIENTE:</b> ${nomeCliente}</div><div><b>ZAP:</b> ${pedido.whatsapp || ""}</div><div><b>END:</b> ${pedido.endereco || "RETIRADA NO BALCAO"}</div><div><b>PAG:</b> ${(pedido.formaPagamento || "").toUpperCase()} ${pedido.formaPagamento === "DINHEIRO" ? " - TROCO P/ R$ " + pedido.trocoPara : ""}</div><div class='linha'></div><div style='white-space:pre-wrap;font-size:11px;line-height:17px;'>${resumo}</div><div class='linha'></div><div style='display:flex;justify-content:space-between'><span>SUBTOTAL</span><span>R$ ${subtotalCalc.toFixed(2).replace(".", ",")}</span></div><div style='display:flex;justify-content:space-between'><span>FRETE</span><span>${frete === 0 ? "GRATIS" : "R$ " + frete.toFixed(2).replace(".", ",")}</span></div><div style='display:flex;justify-content:space-between;font-size:18px;font-weight:900;border-top:1px dashed #000;margin-top:6px;padding-top:6px;'><span>TOTAL</span><span>R$ ${totalNum.toFixed(2).replace(".", ",")}</span></div><div class='linha2'></div><div style='text-align:center;font-weight:900;'>*** MOTOBOY ***</div>`;
 
-    fazerPrint(cupomCozinha);
-    setTimeout(() => fazerPrint(cupomMotoboy), 1500);
+    const conteudoFinal =
+      cupomCozinha +
+      `<div style='height:25px; border-top:2px dashed #000; margin:25px 0; text-align:center; font-size:10px; padding-top:5px;'>✂️ CORTE AQUI ✂️</div>` +
+      cupomMotoboy;
+
+    let iframe = document.getElementById(
+      "iframe-impressao",
+    ) as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "iframe-impressao";
+      iframe.style.position = "absolute";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+    }
+    const html = `<html><head><style>@page{size:80mm auto;margin:0}body{width:72mm;font-family:'Courier New',monospace;font-size:13px;padding:4mm;margin:0;color:#000}.titulo{text-align:center;font-weight:900;font-size:18px}.sub{text-align:center;font-size:11px}.linha{border-top:1px dashed #000;margin:8px 0}.linha2{border-top:2px solid #000;margin:8px 0}.big{font-size:16px;font-weight:900}</style></head><body>${conteudoFinal}<div style='height:90px'></div><script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`;
+    const docIframe = iframe.contentDocument || iframe.contentWindow.document;
+    docIframe.open();
+    docIframe.write(html);
+    docIframe.close();
   }
 
   useEffect(() => {
