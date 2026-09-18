@@ -76,12 +76,19 @@ export default function Checkout() {
       const resumoFinal =
         resumoBase + textoTroco + ` | PAG: ${pag.toUpperCase()}`;
 
+      const statusInicial =
+        pag === "pix" ? "aguardando_pagamento" : "aguardando_confirmacao";
+
       const ref = await addDoc(collection(db, "pedidos"), {
+        nome: nome.trim(),
         cliente: nome.trim(),
         telefone: tel.trim(),
+        whatsapp: tel.trim(),
         endereco: end.trim(),
         pagamento: pag,
-        troco: pag === "dinheiro" ? troco : "",
+        formaPagamento: pag.toUpperCase(),
+        troco: troco,
+        trocoPara: troco,
         tipoEntrega: isRetirada ? "retirada" : "entrega",
         subtotal,
         taxa,
@@ -90,9 +97,13 @@ export default function Checkout() {
         valorFrete: taxa,
         total,
         resumo: resumoFinal,
-        itens: carrinho,
-        status: pag === "pix" ? "aguardando_pagamento" : "aguardando_entrega",
-        statusPagamento: pag === "pix" ? "pendente" : "pagar_na_entrega",
+        itens: carrinho.map((it: any) => ({
+          ...it,
+          qtd: it.quantidade ?? it.qtd ?? 1,
+          quantidade: it.quantidade ?? it.qtd ?? 1,
+        })),
+        status: statusInicial,
+        statusPagamento: pag === "pix" ? "pendente" : "aguardando_confirmacao",
         criadoEm: serverTimestamp(),
       });
 
