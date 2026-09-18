@@ -29,6 +29,7 @@ export default function Checkout() {
   const [tel, setTel] = useState("");
   const [end, setEnd] = useState("");
   const [pag, setPag] = useState("pix");
+  const [troco, setTroco] = useState("");
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
@@ -47,13 +48,12 @@ export default function Checkout() {
   );
   const total = subtotal + taxa;
 
-  const resumo = (carrinho || [])
+  const resumoBase = (carrinho || [])
     .map((it: any) => {
       const qtd = getQtd(it);
       const ads = (it.adicionais || [])
         .map((a: any) => (typeof a === "string" ? a : a?.nome))
         .join(", ");
-      // só mostra OBS se for diferente dos adicionais
       const obs = it.obs && it.obs !== ads ? ` OBS:${it.obs}` : "";
       return `${qtd}x ${it.nome}${ads ? ` + ${ads}` : ""}${obs}`;
     })
@@ -64,15 +64,24 @@ export default function Checkout() {
       Alert.alert("Falta info", "Preencha nome, WhatsApp e endereço");
       return;
     }
+    if (pag === "dinheiro" && !troco.trim()) {
+      Alert.alert("Troco", "Informa o troco ou digite NÃO PRECISA");
+      return;
+    }
     if (!carrinho?.length) return;
     try {
       setEnviando(true);
       const isRetirada = String(end).toUpperCase().includes("RETIRADA");
+      const textoTroco = pag === "dinheiro" ? ` | TROCO PARA: ${troco}` : "";
+      const resumoFinal =
+        resumoBase + textoTroco + ` | PAG: ${pag.toUpperCase()}`;
+
       const ref = await addDoc(collection(db, "pedidos"), {
         cliente: nome.trim(),
         telefone: tel.trim(),
         endereco: end.trim(),
         pagamento: pag,
+        troco: pag === "dinheiro" ? troco : "",
         tipoEntrega: isRetirada ? "retirada" : "entrega",
         subtotal,
         taxa,
@@ -80,13 +89,18 @@ export default function Checkout() {
         frete: taxa,
         valorFrete: taxa,
         total,
-        resumo,
+        resumo: resumoFinal,
         itens: carrinho,
-        status: "aguardando_pagamento",
-        statusPagamento: "pendente",
+        status: pag === "pix" ? "aguardando_pagamento" : "aguardando_entrega",
+        statusPagamento: pag === "pix" ? "pendente" : "pagar_na_entrega",
         criadoEm: serverTimestamp(),
       });
-      router.replace(`/pagamento?pedidoId=${ref.id}` as any);
+
+      if (pag === "pix") {
+        router.replace(`/pagamento?pedidoId=${ref.id}` as any);
+      } else {
+        router.replace(`/sucesso?pedidoId=${ref.id}` as any);
+      }
     } catch (e) {
       console.log(e);
       Alert.alert("Erro", "Não deu pra enviar, tenta de novo");
@@ -101,7 +115,7 @@ export default function Checkout() {
           Carrinho vazio
         </Text>
         <TouchableOpacity
-          onPress={() => router.replace("/" as any)}
+          onPress={() => router.replace("/(tabs)/catalogo" as any)}
           style={styles.btn}
         >
           <Text style={styles.btnTxt}>VOLTAR AO CARDÁPIO</Text>
@@ -121,7 +135,7 @@ export default function Checkout() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 200 }}>
         <View style={styles.card}>
           <Text style={styles.labR}>RESUMO</Text>
-          <Text style={{ color: "#fff", lineHeight: 20 }}>{resumo}</Text>
+          <Text style={{ color: "#fff", lineHeight: 20 }}>{resumoBase}</Text>
           <View style={styles.div} />
           <View
             style={{ flexDirection: "row", justifyContent: "space-between" }}
@@ -153,6 +167,7 @@ export default function Checkout() {
             </Text>
           </View>
         </View>
+
         <Text style={styles.lab}>Seu nome *</Text>
         <TextInput
           style={styles.input}
@@ -179,8 +194,9 @@ export default function Checkout() {
           placeholderTextColor="#666"
           multiline
         />
+
         <Text style={styles.lab}>Pagamento</Text>
-        <View style={{ flexDirection: "row", gap: 8, marginBottom: 24 }}>
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
           {["pix", "dinheiro", "cartao"].map((p) => (
             <TouchableOpacity
               key={p}
@@ -193,6 +209,21 @@ export default function Checkout() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {pag === "dinheiro" && (
+          <>
+            <Text style={styles.lab}>Troco para quanto? *</Text>
+            <TextInput
+              style={styles.input}
+              value={troco}
+              onChangeText={setTroco}
+              placeholder="Ex: 50, 100 ou NÃO PRECISA"
+              placeholderTextColor="#666"
+              keyboardType="numeric"
+            />
+          </>
+        )}
+
         <TouchableOpacity
           style={[styles.btn, enviando && { opacity: 0.6 }]}
           onPress={finalizar}
@@ -201,7 +232,9 @@ export default function Checkout() {
           <Text style={styles.btnTxt}>
             {enviando
               ? "CRIANDO PEDIDO..."
-              : `PAGAR R$ ${total.toFixed(2).replace(".", ",")}`}
+              : pag === "pix"
+                ? `PAGAR R$ ${total.toFixed(2).replace(".", ",")}`
+                : `PAGAR NA ENTREGA - R$ ${total.toFixed(2).replace(".", ",")}`}
           </Text>
         </TouchableOpacity>
       </ScrollView>
