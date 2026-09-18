@@ -42,6 +42,7 @@ export default function Admin() {
   const [clientes, setClientes] = useState([]);
   const [aba, setAba] = useState("pedidos");
   const [filtro, setFiltro] = useState("todos");
+  const [filtroData, setFiltroData] = useState("hoje");
   const [config, setConfig] = useState({
     taxaEntrega: 8,
     tempoEntrega: "10 a 23 min",
@@ -408,12 +409,31 @@ export default function Admin() {
       p.statusPagamento === "pago";
     const isAguardandoDinheiro =
       p.status === "aguardando_confirmacao" && p.formaPagamento === "DINHEIRO";
-    if (filtro === "todos") return true;
-    if (filtro === "dinheiro") return isAguardandoDinheiro;
-    if (filtro === "novo")
-      return !isPagoAuto && !isAguardandoDinheiro && p.status !== "entregue";
-    if (filtro === "pago") return isPagoAuto && p.status !== "entregue";
-    if (filtro === "entregue") return p.status === "entregue";
+    if (filtro === "todos") {
+    } else if (filtro === "dinheiro") {
+      if (!isAguardandoDinheiro) return false;
+    } else if (filtro === "novo") {
+      if (isPagoAuto || isAguardandoDinheiro || p.status === "entregue")
+        return false;
+    } else if (filtro === "pago") {
+      if (!isPagoAuto || p.status === "entregue") return false;
+    } else if (filtro === "entregue") {
+      if (p.status !== "entregue") return false;
+    }
+
+    // FILTRO DE DATA - HOJE / HISTORICO
+    if (filtroData === "hoje") {
+      const hoje = new Date().toISOString().slice(0, 10);
+      let dataPedido = "";
+      if (p.data) dataPedido = p.data.toString().slice(0, 10);
+      else if (p.criadoEm?.toDate)
+        dataPedido = p.criadoEm.toDate().toISOString().slice(0, 10);
+      else if (p.timestamp?.toDate)
+        dataPedido = p.timestamp.toDate().toISOString().slice(0, 10);
+      else if (p.criadoEm) dataPedido = p.criadoEm.toString().slice(0, 10);
+      if (dataPedido && dataPedido !== hoje) return false;
+    }
+
     return true;
   });
   const apagarPedido = async (id) => {
@@ -948,6 +968,53 @@ export default function Admin() {
                     style={{ color: "red", fontWeight: "900", fontSize: 9 }}
                   >
                     🗑️ HISTÓRICO
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
+                <TouchableOpacity
+                  onPress={() => setFiltroData("hoje")}
+                  style={{
+                    flex: 1,
+                    padding: 9,
+                    borderRadius: 20,
+                    backgroundColor: filtroData === "hoje" ? "#D4AF37" : "#222",
+                    borderWidth: filtroData === "hoje" ? 0 : 1,
+                    borderColor: "#555",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: "900",
+                      color: filtroData === "hoje" ? "#000" : "#fff",
+                    }}
+                  >
+                    HOJE
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setFiltroData("todos")}
+                  style={{
+                    flex: 1,
+                    padding: 9,
+                    borderRadius: 20,
+                    backgroundColor:
+                      filtroData === "todos" ? "#D4AF37" : "#222",
+                    borderWidth: filtroData === "todos" ? 0 : 1,
+                    borderColor: "#555",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: "900",
+                      color: filtroData === "todos" ? "#000" : "#fff",
+                    }}
+                  >
+                    HISTÓRICO
                   </Text>
                 </TouchableOpacity>
               </View>
