@@ -50,7 +50,7 @@ export default function Carrinho() {
     <View style={styles.safe}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.push("/" as any)}
+          onPress={() => router.push("/(tabs)/catalogo" as any)}
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={22} color="#D4AF37" />
