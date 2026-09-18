@@ -53,7 +53,9 @@ export default function Checkout() {
       const ads = (it.adicionais || [])
         .map((a: any) => (typeof a === "string" ? a : a?.nome))
         .join(", ");
-      return `${qtd}x ${it.nome}${ads ? ` + ${ads}` : ""}${it.obs ? ` OBS:${it.obs}` : ""}`;
+      // só mostra OBS se for diferente dos adicionais
+      const obs = it.obs && it.obs !== ads ? ` OBS:${it.obs}` : "";
+      return `${qtd}x ${it.nome}${ads ? ` + ${ads}` : ""}${obs}`;
     })
     .join(" | ");
 
