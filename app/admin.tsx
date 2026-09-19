@@ -567,21 +567,34 @@ export default function Admin() {
     if (Platform.OS === "web" && !window.confirm("Apagar produto?")) return;
     await deleteDoc(doc(db, "produtos", id));
   };
-  const uploadToCloudinary = async (uri) => {
+   const uploadToCloudinary = async (fileOrUri) => {
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", { uri, type: "image/jpeg", name: "produto.jpg" });
-    formData.append("upload_preset", UPLOAD_PRESET);
     try {
+      let fileToSend;
+      if (fileOrUri instanceof File || fileOrUri instanceof Blob) {
+        fileToSend = fileOrUri;
+      } else {
+        const response = await fetch(fileOrUri);
+        const blob = await response.blob();
+        fileToSend = blob;
+      }
+      const formData = new FormData();
+      formData.append("file", fileToSend);
+      formData.append("upload_preset", UPLOAD_PRESET);
       const res = await fetch(
         "https://api.cloudinary.com/v1_1/" + CLOUD_NAME + "/image/upload",
-        { method: "POST", body: formData },
+        { method: "POST", body: formData }
       );
       const data = await res.json();
       if (data.secure_url) {
-        if (editando) setEditando({ ...editando, imagemURL: data.secure_url });
-        else setImageUrl(data.secure_url);
-      } else Alert.alert("Erro upload", JSON.stringify(data));
+        if (editando) {
+          setEditando((prev) => ({...prev, imagemURL: data.secure_url }));
+        } else {
+          setImageUrl(data.secure_url);
+        }
+      } else {
+        Alert.alert("Erro upload", JSON.stringify(data));
+      }
     } catch (e) {
       Alert.alert("Erro", e.message);
     } finally {
@@ -589,6 +602,17 @@ export default function Admin() {
     }
   };
   const pickImage = async () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) uploadToCloudinary(file);
+      };
+      input.click();
+      return;
+    }
     let r = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -597,12 +621,6 @@ export default function Admin() {
     });
     if (!r.canceled) uploadToCloudinary(r.assets[0].uri);
   };
-
-  return (
-    <View style={{ flex: 1, backgroundColor: "#000" }}>
-      <Modal visible={modalSenhaVisivel} transparent animationType="slide">
-        <View
-          style={{
             flex: 1,
             backgroundColor: "rgba(0,0,0,0.95)",
             justifyContent: "center",
