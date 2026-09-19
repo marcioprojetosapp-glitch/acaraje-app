@@ -621,6 +621,8 @@ export default function Admin() {
     });
     if (!r.canceled) uploadToCloudinary(r.assets[0].uri);
   };
+    return (
+    <View style={{
             flex: 1,
             backgroundColor: "rgba(0,0,0,0.95)",
             justifyContent: "center",
