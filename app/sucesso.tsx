@@ -5,10 +5,14 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 export default function Sucesso() {
   const router = useRouter();
-  const { tipo, total } = useLocalSearchParams();
+  const { tipo, total, troco } = useLocalSearchParams();
   const tipoStr = String(tipo || "").toLowerCase();
   const ehDinheiro = tipoStr.includes("dinheir");
   const ehRetirada = tipoStr === "retirada";
+  const trocoNum = parseFloat(String(troco || "0").replace(",", "."));
+  const totalNum = parseFloat(String(total || "0").replace(",", "."));
+  const trocoCalculado =
+    trocoNum > totalNum ? (trocoNum - totalNum).toFixed(2) : null;
 
   return (
     <View
@@ -48,17 +52,42 @@ export default function Sucesso() {
       </Text>
 
       {ehDinheiro ? (
-        <Text
-          style={{
-            color: "#fff",
-            marginTop: 20,
-            textAlign: "center",
-            fontSize: 16,
-            lineHeight: 22,
-          }}
-        >
-          Aguardando confirmação da loja.{"\n"}Vamos te chamar no WhatsApp!
-        </Text>
+        <>
+          <Text
+            style={{
+              color: "#fff",
+              marginTop: 20,
+              textAlign: "center",
+              fontSize: 18,
+              fontWeight: "bold",
+            }}
+          >
+            Total: R$ {total}
+          </Text>
+          <Text
+            style={{
+              color: "#00ff88",
+              marginTop: 12,
+              textAlign: "center",
+              fontSize: 20,
+              fontWeight: "900",
+            }}
+          >
+            Troco para R$ {troco}{" "}
+            {trocoCalculado ? ` (volta R$ ${trocoCalculado})` : ""}
+          </Text>
+          <Text
+            style={{
+              color: "#fff",
+              marginTop: 12,
+              textAlign: "center",
+              fontSize: 14,
+              lineHeight: 20,
+            }}
+          >
+            Leve o dinheiro trocado na mão.{"\n"}Aguardando confirmação da loja.
+          </Text>
+        </>
       ) : total ? (
         <Text
           style={{
