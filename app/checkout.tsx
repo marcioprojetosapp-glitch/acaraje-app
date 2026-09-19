@@ -106,11 +106,11 @@ export default function Checkout() {
         statusPagamento: pag === "pix" ? "pendente" : "aguardando_confirmacao",
         criadoEm: serverTimestamp(),
       });
-
       if (pag === "pix") {
         router.replace(`/pagamento?pedidoId=${ref.id}` as any);
       } else {
-        router.replace(`/sucesso?pedidoId=${ref.id}&tipo=dinheiro` as any);
+        // prettier-ignore
+        router.replace(`/sucesso?pedidoId=${ref.id}&tipo=dinheiro&troco=${troco}&total=${total.toFixed(2)}` as any);
       }
     } catch (e) {
       console.log(e);
