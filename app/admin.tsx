@@ -263,7 +263,10 @@ export default function Admin() {
             if (AudioCtx) {
               const ctx = new AudioCtx();
               if (ctx.state === "suspended") ctx.resume().catch(() => {});
-              [0, 350, 700].forEach((delay) => {
+              const isDinheiro = p.trocoPara || p.formaPagamento === "dinheiro";
+              const isPago = p.status === "pago" || p.pago === true;
+              const bips = isDinheiro ? [0, 350] : isPago ? [0, 350, 700] : [0];
+              bips.forEach((delay) => {
                 setTimeout(() => {
                   try {
                     const osc = ctx.createOscillator();
