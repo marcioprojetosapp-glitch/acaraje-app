@@ -421,17 +421,25 @@ export default function Admin() {
       if (p.status !== "entregue") return false;
     }
 
-    // FILTRO DE DATA - HOJE / HISTORICO
+    // FILTRO DE DATA - HOJE SO MOSTRA DE HOJE MESMO
     if (filtroData === "hoje") {
-      const hoje = new Date().toISOString().slice(0, 10);
-      let dataPedido = "";
-      if (p.data) dataPedido = p.data.toString().slice(0, 10);
-      else if (p.criadoEm?.toDate)
-        dataPedido = p.criadoEm.toDate().toISOString().slice(0, 10);
-      else if (p.timestamp?.toDate)
-        dataPedido = p.timestamp.toDate().toISOString().slice(0, 10);
-      else if (p.criadoEm) dataPedido = p.criadoEm.toString().slice(0, 10);
-      if (dataPedido && dataPedido !== hoje) return false;
+      let dt = null;
+      if (p.criadoEm?.toDate) dt = p.criadoEm.toDate();
+      else if (p.timestamp?.toDate) dt = p.timestamp.toDate();
+      else if (p.data?.toDate) dt = p.data.toDate();
+      else if (p.criadoEm?.seconds) dt = new Date(p.criadoEm.seconds * 1000);
+      else if (p.timestamp?.seconds) dt = new Date(p.timestamp.seconds * 1000);
+      else if (p.data) {
+        const t = new Date(p.data);
+        if (!isNaN(t)) dt = t;
+      }
+
+      // se não tem data = pedido antigo -> esconde no HOJE
+      if (!dt) return false;
+
+      const hojeBR = new Date().toLocaleDateString("pt-BR");
+      const dataPedidoBR = dt.toLocaleDateString("pt-BR");
+      if (dataPedidoBR !== hojeBR) return false;
     }
 
     return true;
