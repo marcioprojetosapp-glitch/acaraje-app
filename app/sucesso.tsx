@@ -6,13 +6,13 @@ import { Text, TouchableOpacity, View } from "react-native";
 export default function Sucesso() {
   const router = useRouter();
   const { tipo, total, troco } = useLocalSearchParams();
+
   const tipoStr = String(tipo || "").toLowerCase();
   const ehDinheiro = tipoStr.includes("dinheir");
-  const ehRetirada = tipoStr === "retirada";
+
   const trocoNum = parseFloat(String(troco || "0").replace(",", "."));
   const totalNum = parseFloat(String(total || "0").replace(",", "."));
-  const trocoCalculado =
-    trocoNum > totalNum ? (trocoNum - totalNum).toFixed(2) : null;
+  const volta = trocoNum > totalNum ? (trocoNum - totalNum).toFixed(2) : null;
 
   return (
     <View
@@ -25,30 +25,21 @@ export default function Sucesso() {
       }}
     >
       <Ionicons
-        name={
-          ehDinheiro
-            ? "cash-outline"
-            : ehRetirada
-              ? "storefront"
-              : "checkmark-circle"
-        }
+        name={ehDinheiro ? "cash-outline" : "checkmark-circle"}
         size={100}
-        color={ehDinheiro ? "#FFC107" : ehRetirada ? "#D4AF37" : "#00b050"}
+        color={ehDinheiro ? "#FFC107" : "#00b050"}
       />
+
       <Text
         style={{
           color: "#D4AF37",
-          fontSize: 30,
+          fontSize: 28,
           fontWeight: "900",
           marginTop: 20,
           textAlign: "center",
         }}
       >
-        {ehDinheiro
-          ? "PEDIDO RECEBIDO! 🛵"
-          : ehRetirada
-            ? "PEDIDO CONFIRMADO!"
-            : "PAGO! ✅"}
+        {ehDinheiro ? "PEDIDO RECEBIDO! 🛵" : "PAGO! ✅"}
       </Text>
 
       {ehDinheiro ? (
@@ -67,62 +58,44 @@ export default function Sucesso() {
           <Text
             style={{
               color: "#00ff88",
-              marginTop: 12,
+              marginTop: 15,
               textAlign: "center",
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: "900",
             }}
           >
-            Troco para R$ {troco}{" "}
-            {trocoCalculado ? ` (volta R$ ${trocoCalculado})` : ""}
+            Troco para R$ {troco} (volta R$ {volta})
           </Text>
           <Text
             style={{
               color: "#fff",
-              marginTop: 12,
+              marginTop: 15,
               textAlign: "center",
               fontSize: 14,
-              lineHeight: 20,
+              lineHeight: 22,
             }}
           >
-            Leve o dinheiro trocado na mão.{"\n"}Aguardando confirmação da loja.
+            Tenha R$ {troco} em mãos.{"\n"}O motoboy vai levar R$ {volta} de
+            troco.
+          </Text>
+          <Text
+            style={{
+              color: "#888",
+              marginTop: 10,
+              textAlign: "center",
+              fontSize: 13,
+            }}
+          >
+            Aguardando confirmação da loja.{"\n"}Você vai acompanhar tudo no
+            WhatsApp
           </Text>
         </>
-      ) : total ? (
-        <Text
-          style={{
-            color: "#fff",
-            marginTop: 20,
-            textAlign: "center",
-            fontSize: 16,
-          }}
-        >
-          R$ {total} - {ehRetirada ? "Retirada Grátis" : "Entrega"}
-        </Text>
       ) : (
-        <Text
-          style={{
-            color: "#fff",
-            marginTop: 20,
-            textAlign: "center",
-            fontSize: 16,
-            lineHeight: 22,
-          }}
-        >
-          Pagamento confirmado!{"\n"}Estamos preparando seu pedido 😋
+        <Text style={{ color: "#888", marginTop: 20, textAlign: "center" }}>
+          Aguardando confirmação da loja.{"\n"}Você vai acompanhar tudo no
+          WhatsApp
         </Text>
       )}
-
-      <Text
-        style={{
-          color: "#888",
-          marginTop: 10,
-          textAlign: "center",
-          fontSize: 13,
-        }}
-      >
-        Você vai acompanhar tudo no WhatsApp
-      </Text>
 
       <TouchableOpacity
         onPress={() => router.replace("/(tabs)/catalogo")}
@@ -135,7 +108,7 @@ export default function Sucesso() {
           marginTop: 40,
         }}
       >
-        <Text style={{ color: "#000", fontWeight: "900", fontSize: 16 }}>
+        <Text style={{ color: "#000", fontWeight: "900" }}>
           VOLTAR AO CARDÁPIO
         </Text>
       </TouchableOpacity>
