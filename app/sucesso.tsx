@@ -6,7 +6,9 @@ import { Text, TouchableOpacity, View } from "react-native";
 export default function Sucesso() {
   const router = useRouter();
   const { tipo, total } = useLocalSearchParams();
-  const ehRetirada = tipo === "retirada";
+  const tipoStr = String(tipo || "").toLowerCase();
+  const ehDinheiro = tipoStr.includes("dinheir");
+  const ehRetirada = tipoStr === "retirada";
 
   return (
     <View
@@ -19,9 +21,15 @@ export default function Sucesso() {
       }}
     >
       <Ionicons
-        name={ehRetirada ? "storefront" : "checkmark-circle"}
+        name={
+          ehDinheiro
+            ? "cash-outline"
+            : ehRetirada
+              ? "storefront"
+              : "checkmark-circle"
+        }
         size={100}
-        color={ehRetirada ? "#D4AF37" : "#00b050"}
+        color={ehDinheiro ? "#FFC107" : ehRetirada ? "#D4AF37" : "#00b050"}
       />
       <Text
         style={{
@@ -32,10 +40,26 @@ export default function Sucesso() {
           textAlign: "center",
         }}
       >
-        {ehRetirada ? "PEDIDO CONFIRMADO!" : "PAGO! ✅"}
+        {ehDinheiro
+          ? "PEDIDO RECEBIDO! 🛵"
+          : ehRetirada
+            ? "PEDIDO CONFIRMADO!"
+            : "PAGO! ✅"}
       </Text>
 
-      {total ? (
+      {ehDinheiro ? (
+        <Text
+          style={{
+            color: "#fff",
+            marginTop: 20,
+            textAlign: "center",
+            fontSize: 16,
+            lineHeight: 22,
+          }}
+        >
+          Aguardando confirmação da loja.{"\n"}Vamos te chamar no WhatsApp!
+        </Text>
+      ) : total ? (
         <Text
           style={{
             color: "#fff",
