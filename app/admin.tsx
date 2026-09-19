@@ -261,10 +261,12 @@ export default function Admin() {
               (window as any).AudioContext ||
               (window as any).webkitAudioContext;
             if (AudioCtx) {
-              const ctx = new AudioCtx();
-              if (ctx.state === "suspended") ctx.resume().catch(() => {});
-              const isDinheiro = p.trocoPara || p.formaPagamento === "dinheiro";
-              const isPago = p.status === "pago" || p.pago === true;
+              const fp = String(
+                p.formaPagamento || p.pagamento || "",
+              ).toLowerCase();
+              const isDinheiro = p.trocoPara != null || fp.includes("dinheir");
+              const isPago =
+                !isDinheiro && (p.status === "pago" || p.pago === true);
               const bips = isDinheiro ? [0, 350] : isPago ? [0, 350, 700] : [0];
               bips.forEach((delay) => {
                 setTimeout(() => {
