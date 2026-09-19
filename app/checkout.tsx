@@ -110,7 +110,7 @@ export default function Checkout() {
       if (pag === "pix") {
         router.replace(`/pagamento?pedidoId=${ref.id}` as any);
       } else {
-        router.replace(`/sucesso?pedidoId=${ref.id}` as any);
+        router.replace(`/sucesso?pedidoId=${ref.id}&tipo=dinheiro` as any);
       }
     } catch (e) {
       console.log(e);
